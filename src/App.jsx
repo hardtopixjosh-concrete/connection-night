@@ -6,7 +6,7 @@ import Play from './components/Play';
 import Store from './components/Store';
 import Journal from './components/Journal';
 import Config from './components/Config';
-import { FULL_DECK } from './data/constants';
+import { FULL_DECK } from './data/gameData';
 
 const PIN_MAP = {
   '6789': '67896789-6789-6789-6789-678967896789', // Josh

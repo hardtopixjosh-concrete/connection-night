@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight } from 'lucide-react';
 import { Card } from './SharedUI';
-import { DAILY_QUESTS, MICRO_CONNECTIONS } from '../data/constants';
+import { DAILY_QUESTS, MICRO_CONNECTIONS } from '../data/gameData';
 
 export default function Dashboard({ 
   profile, 

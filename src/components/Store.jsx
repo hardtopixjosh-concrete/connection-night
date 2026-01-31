@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Lock, Plus, Ticket, Star, Trash2, Coins } from 'lucide-react';
 import { Card, Button } from './SharedUI';
-import { STORE_ITEMS } from '../data/constants';
+import { STORE_ITEMS } from '../data/gameData';
 
 export default function Store({ 
   tokens, 

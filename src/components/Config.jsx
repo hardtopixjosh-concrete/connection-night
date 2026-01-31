@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LogOut, Save, RotateCcw, CheckCircle2, Plus, Trash2, Layers, Moon, Zap, Flame } from 'lucide-react';
 import { Card, Button } from './SharedUI';
-import { MICRO_CONNECTIONS } from '../data/constants';
+import { MICRO_CONNECTIONS } from '../data/gameData';
 
 export default function Config({ 
   profile, 
