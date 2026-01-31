@@ -55,12 +55,10 @@ export default function App() {
 
     const coupleId = profile.couple_id;
 
-    // Listen for Shared State
     const stateChannel = supabase.channel('couple_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${coupleId}` }, (payload) => setSharedState(payload.new))
       .subscribe();
 
-    // Listen for Partner Profile Changes
     const profileChannel = supabase.channel('profile_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `couple_id=eq.${coupleId}` }, (payload) => {
             if (payload.new.id !== session.user.id) setPartnerProfile(payload.new);
@@ -68,7 +66,6 @@ export default function App() {
         })
         .subscribe();
     
-    // Listen for other data
     const deckChannel = supabase.channel('deck_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards' }, () => fetchCustomDeck()).subscribe();
     const itemsChannel = supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items' }, () => fetchCustomItems()).subscribe();
     const historyChannel = supabase.channel('history_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => fetchHistory()).subscribe();
@@ -135,7 +132,6 @@ export default function App() {
   
   const handleLogout = async () => { await supabase.auth.signOut(); setSession(null); };
 
-  // ... (Abbreviated core functions)
   const handleSignal = async (signalId) => {
     if (!profile?.couple_id) return;
     const col = profile.is_lead ? 'signal_a' : 'signal_b';
@@ -186,6 +182,7 @@ export default function App() {
             <Config 
                 profile={profile} 
                 partnerProfile={partnerProfile} 
+                sharedState={sharedState} // <--- THIS WAS MISSING
                 onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
                 onLogout={handleLogout} 
                 activeDeck={activeDeck} 

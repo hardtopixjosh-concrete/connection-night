@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { LogOut, RefreshCw, User, XCircle, Link as LinkIcon, AlertTriangle } from 'lucide-react';
+import { LogOut, RefreshCw, User, XCircle, Link as LinkIcon, AlertTriangle, Copy } from 'lucide-react';
 
-export default function Config({ profile, partnerProfile, onUpdateProfile, onLogout, onCreateLink, onJoinLink, onUnlink, onRefresh }) {
+export default function Config({ profile, partnerProfile, sharedState, onUpdateProfile, onLogout, onCreateLink, onJoinLink, onUnlink, onRefresh }) {
   
   const [linkMode, setLinkMode] = useState(null); 
-  const [generatedCode, setGeneratedCode] = useState(null);
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -12,8 +11,8 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
   const handleGenerate = async () => {
     setLoading(true);
     try {
-        const code = await onCreateLink();
-        setGeneratedCode(code);
+        await onCreateLink();
+        // We don't need to store code locally, it will appear in sharedState
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -36,7 +35,6 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
            <h2 className="text-3xl font-black text-white tracking-tighter">Config</h2>
            <p className="text-zinc-500 font-medium">Customize your experience</p>
         </div>
-        {/* REFRESH BUTTON */}
         <button onClick={onRefresh} className="p-3 bg-zinc-900 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
             <RefreshCw size={18} />
         </button>
@@ -66,20 +64,49 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
                 <label className="text-xs text-zinc-500 font-bold uppercase mb-3 block">Connection Status</label>
                 
                 {profile?.couple_id ? (
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between">
-                        <div>
-                            <div className="text-emerald-400 font-bold flex items-center gap-2">
-                                <LinkIcon size={16} /> Connected
+                    // LINKED STATE
+                    <div className="space-y-4">
+                        {partnerProfile ? (
+                            // FULLY CONNECTED
+                            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between">
+                                <div>
+                                    <div className="text-emerald-400 font-bold flex items-center gap-2">
+                                        <LinkIcon size={16} /> Connected
+                                    </div>
+                                    <div className="text-zinc-400 text-sm mt-1">
+                                        Partner: <span className="text-white font-bold">{partnerProfile.name}</span>
+                                    </div>
+                                </div>
+                                <button onClick={onUnlink} className="p-2 bg-zinc-950 hover:bg-rose-950/30 text-zinc-500 hover:text-rose-500 rounded-lg transition-colors border border-zinc-800 hover:border-rose-900">
+                                    <XCircle size={20} />
+                                </button>
                             </div>
-                            <div className="text-zinc-400 text-sm mt-1">
-                                Partner: <span className="text-white font-bold">{partnerProfile?.name || "Loading..."}</span>
+                        ) : (
+                            // WAITING FOR PARTNER (SHOW CODE HERE!)
+                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <div className="text-amber-400 font-bold flex items-center gap-2">
+                                            <AlertTriangle size={16} /> Waiting for Partner
+                                        </div>
+                                        <div className="text-zinc-400 text-xs mt-1">
+                                            Share this code so they can join you.
+                                        </div>
+                                    </div>
+                                    <button onClick={onUnlink} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button>
+                                </div>
+                                
+                                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex justify-between items-center cursor-pointer group" onClick={() => navigator.clipboard.writeText(sharedState?.link_code)}>
+                                    <span className="text-2xl font-mono font-black text-white tracking-[0.2em]">
+                                        {sharedState?.link_code || '....'}
+                                    </span>
+                                    <Copy size={16} className="text-zinc-600 group-hover:text-white transition-colors"/>
+                                </div>
                             </div>
-                        </div>
-                        <button onClick={onUnlink} className="p-2 bg-zinc-950 hover:bg-rose-950/30 text-zinc-500 hover:text-rose-500 rounded-lg transition-colors border border-zinc-800 hover:border-rose-900">
-                            <XCircle size={20} />
-                        </button>
+                        )}
                     </div>
                 ) : (
+                    // NOT LINKED STATE
                     <div className="space-y-3">
                         {!linkMode ? (
                             <div className="flex gap-2">
@@ -94,18 +121,10 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
                             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 animate-in zoom-in-95">
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-white font-bold text-sm">
-                                        {linkMode === 'create' ? "Share this Code" : "Enter Partner Code"}
+                                        {linkMode === 'create' ? "Generating Code..." : "Enter Partner Code"}
                                     </span>
                                     <button onClick={() => {setLinkMode(null); setError(null);}} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button>
                                 </div>
-
-                                {linkMode === 'create' && (
-                                    <div className="bg-zinc-900 rounded-lg p-3 text-center border border-zinc-800 mb-2 cursor-pointer" onClick={() => navigator.clipboard.writeText(generatedCode)}>
-                                        {loading ? <span className="text-zinc-500 text-xs">Generating...</span> : 
-                                            <span className="text-2xl font-mono font-black text-white tracking-widest">{generatedCode}</span>
-                                        }
-                                    </div>
-                                )}
 
                                 {linkMode === 'join' && (
                                     <div className="flex gap-2">
@@ -137,7 +156,7 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
       </button>
       
       <div className="text-center pb-8">
-        <p className="text-[10px] text-zinc-700 font-mono uppercase">Connection Night v1.3</p>
+        <p className="text-[10px] text-zinc-700 font-mono uppercase">Connection Night v1.4</p>
       </div>
     </div>
   );
