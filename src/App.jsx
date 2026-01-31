@@ -9,8 +9,8 @@ import Config from './components/Config';
 import { FULL_DECK } from './data/gameData';
 
 const PIN_MAP = {
-  '6789': '67896789-6789-6789-6789-678967896789', // Josh
-  '1234': '12341234-1234-1234-1234-123412341234', // Kara
+  '6789': '67896789-6789-6789-6789-678967896789', // Josh (Lead)
+  '1234': '12341234-1234-1234-1234-123412341234', // Kara (Partner)
   '1111': '11111111-1111-1111-1111-111111111111'  // Test
 };
 
@@ -31,7 +31,7 @@ export default function App() {
   
   // DECK STATE: Default + Custom
   const [customDeckCards, setCustomDeckCards] = useState([]);
-  const [hiddenCards, setHiddenCards] = useState([]); // List of IDs to hide (deleted default cards)
+  const [hiddenCards, setHiddenCards] = useState([]); 
 
   // Computed Deck: Full Deck + Custom - Hidden
   const activeDeck = [...FULL_DECK, ...customDeckCards].filter(c => !hiddenCards.includes(c.id));
@@ -43,6 +43,9 @@ export default function App() {
 
   useEffect(() => {
     if (!sessionUser) return;
+
+    // Calculate partner ID here so we don't need partnerProfile as a dependency
+    const partnerId = (sessionUser === PIN_MAP['6789']) ? PIN_MAP['1234'] : PIN_MAP['6789'];
 
     // --- REALTIME SUBSCRIPTIONS ---
     const stateChannel = supabase.channel('couple_state_changes')
@@ -63,15 +66,23 @@ export default function App() {
       })
       .subscribe();
 
-    // Re-fetch everything else on changes
+    // Re-fetch history/vouchers on changes
     const historyChannel = supabase.channel('history_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => fetchHistory()).subscribe();
     const voucherChannel = supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
-    const profileChannel = supabase.channel('profile_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchProfiles(sessionUser)).subscribe();
+    
+    // Listen for Profile changes (balance updates)
+    const profileChannel = supabase.channel('profile_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+            if (payload.new.id === sessionUser) setProfile(payload.new);
+            // Use the calculated partnerId so we don't rely on the state variable
+            if (payload.new.id === partnerId) setPartnerProfile(payload.new);
+        })
+        .subscribe();
 
     return () => { 
       supabase.removeAllChannels();
     };
-  }, [sessionUser]);
+  }, [sessionUser]); 
 
   async function fetchAllData(userId) {
     setLoading(true);
@@ -91,13 +102,11 @@ export default function App() {
       let { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (!data) {
          const isJosh = (userId === PIN_MAP['6789']);
-         const newProfile = { id: userId, name: isJosh ? 'Josh' : 'Kara', partner_name: isJosh ? 'Kara' : 'Josh', is_lead: isJosh, partner_focus_areas: ['hugs'] };
+         const newProfile = { id: userId, name: isJosh ? 'Josh' : 'Kara', partner_name: isJosh ? 'Kara' : 'Josh', is_lead: isJosh, partner_focus_areas: ['hugs'], tokens: 0 };
          await supabase.from('profiles').insert([newProfile]);
          data = newProfile;
       }
       setProfile(data);
-      // Hidden cards are stored in profile settings for simplicity, or we could use a table. 
-      // For now, let's assume `hidden_card_ids` is a column in profiles.
       if (data.hidden_card_ids) setHiddenCards(data.hidden_card_ids);
 
       const partnerId = (userId === PIN_MAP['6789']) ? PIN_MAP['1234'] : PIN_MAP['6789'];
@@ -107,7 +116,7 @@ export default function App() {
 
   const fetchState = async () => {
       let { data } = await supabase.from('couple_state').select('*').eq('id', 1).maybeSingle();
-      if (!data) { const { data: newData } = await supabase.from('couple_state').insert([{ id: 1, tokens: 0 }]).select().single(); setSharedState(newData); } 
+      if (!data) { const { data: newData } = await supabase.from('couple_state').insert([{ id: 1, vault_current: 0 }]).select().single(); setSharedState(newData); } 
       else { setSharedState(data); }
   };
   const fetchHistory = async () => { const { data } = await supabase.from('history').select('*').order('created_at', { ascending: false }); setHistory(data || []); };
@@ -126,7 +135,6 @@ export default function App() {
   const handleBackspace = () => { setPin(prev => prev.slice(0, -1)); setErrorMsg(''); };
   const handleLogout = () => { localStorage.removeItem('velvet_user_id'); setSessionUser(null); setProfile(null); setSharedState(null); setPin(''); };
 
-  // ... (Signal/Sync Logic remains same)
   const handleSignal = async (signalId) => {
     const isAlex = sessionUser === PIN_MAP['6789'];
     const column = isAlex ? 'signal_a' : 'signal_b';
@@ -154,13 +162,48 @@ export default function App() {
   };
 
   const handleFinalSelection = async (finalCard) => {
+     // 1. Log History
      const historyItem = { title: finalCard.title, intensity: finalCard.intensity, created_at: new Date().toISOString() };
      await supabase.from('history').insert([historyItem]);
-     const intensityMap = { 'low': 1, 'medium': 2, 'high': 3 };
-     const leadVal = intensityMap[sharedState.sync_data_lead.intensity] || 1;
-     const partnerVal = intensityMap[sharedState.sync_data_partner.intensity] || 1;
-     const karmaAward = Math.abs(leadVal - partnerVal);
-     await supabase.from('couple_state').update({ sync_stage: 'active', sync_pool: [finalCard], tokens: sharedState.tokens + karmaAward }).eq('id', 1);
+
+     // 2. COMPROMISE LOGIC - ROBUST CHECK
+     try {
+       // Fetch fresh inputs to be 100% sure
+       const { data: freshState } = await supabase.from('couple_state').select('*').eq('id', 1).single();
+       
+       if (freshState && freshState.sync_data_lead && freshState.sync_data_partner) {
+           const intensityMap = { 'low': 1, 'medium': 2, 'high': 3 };
+           
+           // Clean inputs to avoid "High" vs "high" mismatch
+           const leadRaw = freshState.sync_data_lead.intensity || 'low';
+           const partnerRaw = freshState.sync_data_partner.intensity || 'low';
+           
+           const leadVal = intensityMap[leadRaw.toLowerCase()] || 1;
+           const partnerVal = intensityMap[partnerRaw.toLowerCase()] || 1;
+
+           let recipientId = null;
+
+           if (leadVal > partnerVal) {
+               recipientId = PIN_MAP['6789']; // Josh
+           } else if (partnerVal > leadVal) {
+               recipientId = PIN_MAP['1234']; // Kara
+           }
+
+           if (recipientId) {
+               const { data: userData } = await supabase.from('profiles').select('tokens').eq('id', recipientId).single();
+               const currentTokens = userData?.tokens || 0;
+               await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', recipientId);
+               
+               // Force refresh profile data for both users locally
+               fetchProfiles(sessionUser);
+           }
+       }
+     } catch (err) {
+       console.error("Token Error:", err);
+     }
+
+     // 3. Update Shared State
+     await supabase.from('couple_state').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', 1);
      setActiveTab('dashboard');
   };
   
@@ -170,41 +213,52 @@ export default function App() {
   };
 
   const handleResetEconomy = async () => {
-    await supabase.from('couple_state').update({ tokens: 0, vault_current: 0 }).eq('id', 1);
-    setSharedState(prev => ({ ...prev, tokens: 0, vault_current: 0 }));
+    // Reset Shared Vault
+    await supabase.from('couple_state').update({ vault_current: 0 }).eq('id', 1);
+    // Reset My Tokens
+    await supabase.from('profiles').update({ tokens: 0 }).eq('id', sessionUser);
+    // Reset Partner Tokens
+    if (partnerProfile) {
+        await supabase.from('profiles').update({ tokens: 0 }).eq('id', partnerProfile.id);
+    }
+    setSharedState(prev => ({ ...prev, vault_current: 0 }));
   };
 
-  // --- STORE ITEM HANDLERS ---
   const handleAddCustomItem = async (item) => { await supabase.from('custom_store_items').insert([item]); };
   const handleDeleteCustomItem = async (id) => { await supabase.from('custom_store_items').delete().eq('id', id); };
   
   const handlePurchase = async (item) => {
-    await supabase.from('couple_state').update({ tokens: sharedState.tokens - item.cost }).eq('id', 1);
+    const currentTokens = profile.tokens || 0;
+    if (currentTokens < item.cost) return; // Frontend check
+
+    // Deduct from My Personal Profile
+    await supabase.from('profiles').update({ tokens: currentTokens - item.cost }).eq('id', sessionUser);
     await supabase.from('vouchers').insert([{ label: item.label, icon_name: 'Ticket' }]);
   };
 
   const contributeToVault = async (amt) => {
-    await supabase.from('couple_state').update({ tokens: sharedState.tokens - amt, vault_current: sharedState.vault_current + amt }).eq('id', 1);
+    const currentTokens = profile.tokens || 0;
+    if (currentTokens < amt) return;
+
+    // Deduct from Me, Add to Shared Vault
+    await supabase.from('profiles').update({ tokens: currentTokens - amt }).eq('id', sessionUser);
+    await supabase.from('couple_state').update({ vault_current: sharedState.vault_current + amt }).eq('id', 1);
   };
 
-  // --- DECK MANAGEMENT HANDLERS ---
   const handleAddDeckCard = async (card) => {
     await supabase.from('custom_deck_cards').insert([card]);
   };
 
   const handleDeleteDeckCard = async (card) => {
-    // If it's a custom card (has a UUID), delete from DB
     if (card.id.length > 10) { 
         await supabase.from('custom_deck_cards').delete().eq('id', card.id);
     } else {
-        // If it's a built-in card (id like 'l1'), add to hidden list
         const newHidden = [...hiddenCards, card.id];
         setHiddenCards(newHidden);
         await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', sessionUser);
     }
   };
 
-  // ... (Olive Branch, Memory Handlers remain same)
   const handleOliveBranchClick = async () => {
     if (!sharedState) return;
     if (sharedState.olive_branch_accepted_at) {
@@ -262,33 +316,28 @@ export default function App() {
   const partnerCurrentSignal = isAlex ? sharedState?.signal_b : sharedState?.signal_a;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans flex justify-center selection:bg-violet-500/30 overflow-hidden">
-      <div className="w-full max-w-md bg-zinc-950 min-h-screen relative shadow-2xl flex flex-col overflow-hidden font-sans">
-        <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 opacity-70" />
-        <div className="flex-1 overflow-y-auto p-5 scrollbar-hide">
+    <div className="h-[100dvh] w-full bg-zinc-950 text-zinc-200 font-sans flex justify-center selection:bg-violet-500/30 overflow-hidden fixed inset-0">
+      <div className="w-full max-w-md bg-zinc-950 h-full relative shadow-2xl flex flex-col overflow-hidden font-sans">
+        <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 opacity-70 shrink-0" />
+        <div className="flex-1 overflow-y-auto p-5 scrollbar-hide overscroll-contain pb-24">
           {activeTab === 'dashboard' && <Dashboard profile={uiProfile} partnerProfile={partnerProfile} syncedConnection={sharedState?.sync_stage === 'active' ? { activity: sharedState.sync_pool[0], desc: 'Synced Plan Active' } : null} partnerSignal={partnerCurrentSignal} setPartnerSignal={() => handleSignal(partnerCurrentSignal)} onSignal={handleSignal} mySignal={myCurrentSignal} lastActivityDate={Date.now()} vouchers={vouchers} onFulfillVoucher={() => {}} oliveBranchActive={sharedState?.olive_branch_active} oliveBranchSender={sharedState?.olive_branch_sender} oliveBranchAcceptedAt={sharedState?.olive_branch_accepted_at} onOliveBranchClick={handleOliveBranchClick} sessionUserId={sessionUser} syncStage={sharedState?.sync_stage} onNavigate={setActiveTab} />}
           {activeTab === 'play' && <Play profile={uiProfile} deck={activeDeck} sharedState={sharedState} onSyncInput={handleSyncInput} onLeadSelection={handleLeadSelection} onFinalSelection={handleFinalSelection} onResetSync={handleResetSync} />}
-          
-          {/* PASSED CUSTOM ITEMS TO STORE */}
-          {activeTab === 'store' && <Store tokens={sharedState?.tokens || 0} onPurchase={handlePurchase} vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} onContribute={contributeToVault} customItems={customStoreItems} onAddCustomItem={handleAddCustomItem} onDeleteCustomItem={handleDeleteCustomItem} />}
-          
+          {activeTab === 'store' && <Store tokens={profile?.tokens || 0} onPurchase={handlePurchase} vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} onContribute={contributeToVault} customItems={customStoreItems} onAddCustomItem={handleAddCustomItem} onDeleteCustomItem={handleDeleteCustomItem} />}
           {activeTab === 'memories' && <Journal profile={uiProfile} history={history} onAddMemory={handleAddMemory} onDeleteMemory={handleDeleteMemory} onUpdateMemory={handleUpdateMemory} />}
-          
-          {/* PASSED DECK HANDLERS TO CONFIG */}
           {activeTab === 'setup' && <Config profile={uiProfile} onUpdateProfile={handleUpdateProfile} onLogout={handleLogout} onResetEconomy={handleResetEconomy} activeDeck={activeDeck} onAddDeckCard={handleAddDeckCard} onDeleteDeckCard={handleDeleteDeckCard} />}
         </div>
-        <div className="sticky bottom-0 w-full z-50">
-          <div className="bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800/50 pb-8 pt-2 px-6">
-            <div className="flex justify-between items-center relative">
-              <NavItem id="dashboard" label="Home" icon={Heart} />
-              <NavItem id="store" label="Store" icon={ShoppingBag} />
-              <div className="relative -top-8"><button onClick={() => setActiveTab('play')} className="h-16 w-16 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] border-[6px] border-zinc-950 active:scale-90 transition-all"><Sparkles size={28} fill="currentColor" /></button></div>
-              <NavItem id="memories" label="History" icon={BookOpen} />
-              <NavItem id="setup" label="Config" icon={Settings} />
-            </div>
+        
+        {/* Fixed Navigation Bar */}
+        <div className="w-full bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800/50 pb-8 pt-2 px-6 shrink-0 z-50">
+          <div className="flex justify-between items-center relative">
+            <NavItem id="dashboard" label="Home" icon={Heart} />
+            <NavItem id="store" label="Store" icon={ShoppingBag} />
+            <div className="relative -top-8"><button onClick={() => setActiveTab('play')} className="h-16 w-16 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] border-[6px] border-zinc-950 active:scale-90 transition-all"><Sparkles size={28} fill="currentColor" /></button></div>
+            <NavItem id="memories" label="History" icon={BookOpen} />
+            <NavItem id="setup" label="Config" icon={Settings} />
           </div>
         </div>
-        <div className={`fixed bottom-2 right-2 w-2 h-2 rounded-full ${realtimeStatus === 'SUBSCRIBED' ? 'bg-emerald-500' : 'bg-rose-500'}`} title={realtimeStatus} />
+        <div className={`fixed bottom-2 right-2 w-2 h-2 rounded-full z-50 pointer-events-none ${realtimeStatus === 'SUBSCRIBED' ? 'bg-emerald-500' : 'bg-rose-500'}`} title={realtimeStatus} />
       </div>
     </div>
   );

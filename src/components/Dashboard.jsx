@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight } from 'lucide-react';
+import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight, HelpCircle, X, Coins, Zap } from 'lucide-react';
 import { Card } from './SharedUI';
 import { DAILY_QUESTS, MICRO_CONNECTIONS } from '../data/gameData';
 
@@ -11,14 +11,16 @@ export default function Dashboard({
   onSignal, 
   mySignal, 
   lastActivityDate, 
-  oliveBranchActive,
-  oliveBranchSender,
-  oliveBranchAcceptedAt,
-  onOliveBranchClick,
-  sessionUserId,
-  syncStage,
+  oliveBranchActive, 
+  oliveBranchSender, 
+  oliveBranchAcceptedAt, 
+  onOliveBranchClick, 
+  sessionUserId, 
+  syncStage, 
   onNavigate 
 }) {
+  const [showHelp, setShowHelp] = useState(false);
+
   const isWaitingForPartnerInput = syncStage === 'input';
   const isLeadPicking = syncStage === 'lead_picking';
   const isPartnerPicking = syncStage === 'partner_picking';
@@ -192,23 +194,70 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* --- SYSTEM GUIDE --- */}
-      <div className="mt-8 border-t border-zinc-800 pt-6 px-2 opacity-50 hover:opacity-100 transition-opacity pb-10">
-         <div className="flex items-start gap-4 mb-4">
-            <div className="bg-zinc-800 p-2 rounded-lg text-zinc-400"><Flag size={16} /></div>
-            <div>
-               <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">The White Flag</p>
-               <p className="text-xs text-zinc-400 mt-1">A signal for peace. Use it to reach out when you feel distant. If partner accepts, it stays green for 24h.</p>
-            </div>
-         </div>
-         <div className="flex items-start gap-4">
-            <div className="bg-zinc-800 p-2 rounded-lg text-zinc-400"><Sparkles size={16} /></div>
-            <div>
-               <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Earning Tokens</p>
-               <p className="text-xs text-zinc-400 mt-1">Earn 'Karma Tokens' when you want high intensity but compromise for your partner's lower capacity.</p>
-            </div>
-         </div>
+      {/* --- HOW TO PLAY SECTION (REPLACED SYSTEM GUIDE) --- */}
+      <div className="flex justify-center mt-8 pb-4">
+        <button
+            onClick={() => setShowHelp(true)}
+            className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-violet-400 transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border border-zinc-800 hover:border-violet-500/30"
+        >
+            <HelpCircle size={16} />
+            <span>How to Play</span>
+        </button>
       </div>
+
+      {/* --- HELP MODAL --- */}
+      {showHelp && (
+        <div className="fixed inset-0 z-[60] bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl shadow-2xl max-h-[85vh] overflow-y-auto relative ring-1 ring-white/10">
+                <div className="sticky top-0 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 p-5 flex justify-between items-center z-10">
+                    <h2 className="text-white font-bold uppercase tracking-widest text-sm flex items-center gap-2"><Crown size={16} className="text-violet-500" /> Game Guide</h2>
+                    <button onClick={() => setShowHelp(false)} className="bg-zinc-800 p-2 rounded-full text-zinc-400 hover:text-white transition-colors"><X size={16} /></button>
+                </div>
+                
+                <div className="p-6 space-y-8">
+                    {/* Section 1: Signals */}
+                    <div className="flex gap-4">
+                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-rose-500 h-fit"><Flag size={20} fill="currentColor" /></div>
+                        <div>
+                            <h3 className="text-white font-bold text-sm">The White Flag</h3>
+                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Located in the top corner. Tap this when you feel distant or need to resolve conflict. It's a silent signal that says "I want to fix this."</p>
+                        </div>
+                    </div>
+
+                    {/* Section 2: Connection Night */}
+                    <div className="flex gap-4">
+                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-violet-500 h-fit"><Sparkles size={20} fill="currentColor" /></div>
+                        <div>
+                            <h3 className="text-white font-bold text-sm">Connection Sync</h3>
+                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Tap the big <span className="text-white font-bold">Play Button</span> (bottom center) to start. You both rate your battery levels, and the app suggests activities that match your combined energy.</p>
+                        </div>
+                    </div>
+
+                    {/* Section 3: Tokens */}
+                    <div className="flex gap-4">
+                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-amber-500 h-fit"><Coins size={20} fill="currentColor" /></div>
+                        <div>
+                            <h3 className="text-white font-bold text-sm">Earning Tokens</h3>
+                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Fairness is key. During a Sync, if you have to <span className="text-white font-bold">compromise</span> (you wanted High intensity but agreed to Low), you earn 1 Token. Use tokens to buy rewards in the Store.</p>
+                        </div>
+                    </div>
+
+                     {/* Section 4: Daily Drop */}
+                     <div className="flex gap-4">
+                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-emerald-500 h-fit"><Calendar size={20} /></div>
+                        <div>
+                            <h3 className="text-white font-bold text-sm">The Daily Drop</h3>
+                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Every day, the dashboard shows a "Daily Quest" tailored to your partner's love language. It's a small, easy way to show you care.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="p-5 border-t border-zinc-800 bg-zinc-900/50">
+                    <button onClick={() => setShowHelp(false)} className="w-full py-3 bg-white text-zinc-950 hover:bg-zinc-200 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">Got it</button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 }

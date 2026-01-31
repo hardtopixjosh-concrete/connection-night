@@ -1,7 +1,16 @@
-import { Smile, MessageCircle, Heart, Users, Sparkles, Zap, Calendar, Moon, Shield, Gift, Coffee, Utensils } from 'lucide-react';
+import { Smile, MessageCircle, Heart, Users, Sparkles, Zap, Calendar, Moon, Shield, Gift, Coffee, Utensils, Flame, Battery, Sun } from 'lucide-react';
 
 export const INTENSITY_ORDER = { low: 1, medium: 2, high: 3 };
 
+// --- LIVE SIGNALS (MOODS) ---
+// Only the ones you requested
+export const MOOD_SIGNALS = [
+  { id: 'horny', label: 'Horny', color: 'bg-rose-600', icon: Flame },
+  { id: 'talkative', label: 'Talkative', color: 'bg-indigo-500', icon: MessageCircle },
+  { id: 'cuddly', label: 'Need Affection', color: 'bg-pink-500', icon: Heart },
+];
+
+// --- LOVE LANGUAGE ACTIONS (For Daily Drop) ---
 export const MICRO_CONNECTIONS = [
   { id: 'compliments', label: 'Sincere Compliments', color: 'bg-blue-500', icon: Smile },
   { id: 'conversations', label: 'Conversations', color: 'bg-indigo-500', icon: MessageCircle },
@@ -114,7 +123,7 @@ export const STORE_ITEMS = [
   { id: 'fancy_dinner', label: 'Fancy Dinner Out', cost: 15, icon: Utensils, desc: 'A reservation at a restaurant of your choice.' },
 ];
 
-// --- THE REAL OPTIONS ---
+// --- YOUR ORIGINAL DECK ---
 export const FULL_DECK = [
   // LOW INTENSITY
   { id: 'l1', title: "Cuddling + conversation", intensity: 'low', category: 'Intimacy', desc: "Close contact with meaningful talk." },

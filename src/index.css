@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  background-color: #09090b; /* Match zinc-950 */
+}
+
+html, body {
+  background-color: #09090b; /* Prevents white flash on scroll bounce */
+  height: 100%;
+  width: 100%;
+  overscroll-behavior-y: none; /* Stops the elastic "rubber banding" */
+  -webkit-tap-highlight-color: transparent; /* Removes tap grey box on iOS */
+  position: fixed; /* locks body to prevent background scroll */
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
 /* Hide scrollbar for Chrome, Safari and Opera */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
