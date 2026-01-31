@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { LogOut, Trash2, Plus, Sparkles, User, UserPlus, XCircle, Copy, Link as LinkIcon, AlertTriangle } from 'lucide-react';
+import { LogOut, RefreshCw, User, XCircle, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 
-export default function Config({ profile, partnerProfile, onUpdateProfile, onLogout, activeDeck, onAddDeckCard, onDeleteDeckCard, onCreateLink, onJoinLink, onUnlink }) {
+export default function Config({ profile, partnerProfile, onUpdateProfile, onLogout, onCreateLink, onJoinLink, onUnlink, onRefresh }) {
   
-  // Local state for the Linking UI
-  const [linkMode, setLinkMode] = useState(null); // 'create', 'join', null
+  const [linkMode, setLinkMode] = useState(null); 
   const [generatedCode, setGeneratedCode] = useState(null);
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,18 +20,26 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
 
   const handleJoin = async () => {
     setLoading(true);
+    setError(null);
     try {
         await onJoinLink(joinCode);
-        setLinkMode(null); // Close menu on success
+        setLinkMode(null);
+        setJoinCode('');
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      <header>
-        <h2 className="text-3xl font-black text-white tracking-tighter">Config</h2>
-        <p className="text-zinc-500 font-medium">Customize your experience</p>
+      <header className="flex justify-between items-center">
+        <div>
+           <h2 className="text-3xl font-black text-white tracking-tighter">Config</h2>
+           <p className="text-zinc-500 font-medium">Customize your experience</p>
+        </div>
+        {/* REFRESH BUTTON */}
+        <button onClick={onRefresh} className="p-3 bg-zinc-900 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+            <RefreshCw size={18} />
+        </button>
       </header>
 
       {/* --- ACCOUNT SECTION --- */}
@@ -122,7 +129,6 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
         </div>
       </section>
 
-      {/* --- REST OF CONFIG (Deck, etc) --- */}
       <button 
         onClick={onLogout}
         className="w-full py-4 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-rose-950/10 hover:text-rose-500 hover:border-rose-900/30 transition-all mt-8"
@@ -131,7 +137,7 @@ export default function Config({ profile, partnerProfile, onUpdateProfile, onLog
       </button>
       
       <div className="text-center pb-8">
-        <p className="text-[10px] text-zinc-700 font-mono uppercase">Connection Night v1.2</p>
+        <p className="text-[10px] text-zinc-700 font-mono uppercase">Connection Night v1.3</p>
       </div>
     </div>
   );
