@@ -89,11 +89,11 @@ export default function App() {
 
   // 3. FETCH DATA
   async function fetchAllData(userId) {
-    // Don't set loading true here, or it flickers. Just fetch quietly.
-    
+    if (!userId) return;
+
     let { data: myProfile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
     
-    // FIX: If profile doesn't exist yet, stop here and let Auth component handle creation
+    // If profile doesn't exist yet, stop here and let Auth component handle creation
     if (!myProfile) {
        setProfile(null);
        setLoading(false);
@@ -125,10 +125,8 @@ export default function App() {
   const fetchCustomItems = async () => { const { data } = await supabase.from('custom_store_items').select('*'); setCustomStoreItems(data || []); };
   const fetchCustomDeck = async () => { const { data } = await supabase.from('custom_deck_cards').select('*'); setCustomDeckCards(data || []); };
 
-  // ACTIONS
   const handleLogout = async () => { await supabase.auth.signOut(); setSession(null); };
-  
-  // (Abbreviated helper functions to save space - they rely on variables defined above)
+
   const handleSignal = async (signalId) => {
     const col = profile.is_lead ? 'signal_a' : 'signal_b';
     const val = (profile.is_lead ? sharedState.signal_a : sharedState.signal_b) === signalId ? null : signalId;
@@ -213,13 +211,19 @@ export default function App() {
   const handleUpdateMemory = async (id, u) => { await supabase.from('history').update(u).eq('id', id); };
   const handleUpdateProfile = async (u) => { await supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({ ...prev, ...u })); };
 
-
   // --- RENDER ---
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
 
-  // FIX: If NO SESSION, OR (Session exists but NO PROFILE exists yet) -> Show Auth
+  // FIX IS HERE: We now correctly fetch the user ID before calling fetchAllData
   if (!session || !profile?.couple_id) {
-    return <Auth onLoginSuccess={() => fetchAllData(supabase.auth.getUser().then(({data}) => data.user.id))} />;
+    return (
+      <Auth 
+        onLoginSuccess={async () => {
+          const { data } = await supabase.auth.getUser();
+          if (data?.user) fetchAllData(data.user.id);
+        }} 
+      />
+    );
   }
 
   const NavItem = ({ id, label, icon: Icon }) => (
