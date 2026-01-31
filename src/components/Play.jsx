@@ -22,14 +22,14 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   const [shortlist, setShortlist] = useState([]);
 
   const isLead = profile.isUserLead;
-  const myData = isLead ? sharedState.sync_data_lead : sharedState.sync_data_partner;
+  const myData = isLead ? sharedState?.sync_data_lead : sharedState?.sync_data_partner;
 
   // --- AUTO-JUMP: If partner joins late, skip mode select ---
   useEffect(() => {
-    if (sharedState.sync_stage === 'input' && !myData) {
+    if (sharedState?.sync_stage === 'input' && !myData) {
         setLocalStage('mood');
     }
-  }, [sharedState.sync_stage, myData]);
+  }, [sharedState?.sync_stage, myData]);
 
   // --- HANDLERS ---
   const handleModeSelect = (mode) => {
@@ -42,10 +42,11 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     // 1. Show Spinner
     setLocalStage('syncing');
     
-    // 2. Wait, Send Data, then Kill Spinner
+    // 2. Wait, Send Data
     setTimeout(() => {
         onSyncInput({ battery: finalBat, intensity: level });
-        setLocalStage(null); // <--- CRITICAL FIX: Turns off the spinner
+        // FIX: Don't set to null, set to 'waiting' so we don't flash a blank screen
+        setLocalStage('waiting'); 
     }, 1500);
   };
 
@@ -61,8 +62,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
       );
   }
 
-  // 2. WAITING SCREEN (If *I* already submitted, but partner hasn't)
-  if (myData && sharedState.sync_stage === 'input') {
+  // 2. WAITING SCREEN (If I submitted, or local stage says waiting)
+  if (localStage === 'waiting' || (myData && sharedState?.sync_stage === 'input')) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in px-6">
         <div className="bg-zinc-900 p-8 rounded-full border border-zinc-800 relative">
@@ -72,12 +73,14 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
           <h2 className="text-xl font-bold text-white tracking-tight">Vibe Locked In</h2>
           <p className="text-zinc-500 text-xs mt-2 font-bold uppercase tracking-widest">Waiting for partner...</p>
         </div>
+        {/* ADDED RESET BUTTON IN CASE STUCK */}
+        <button onClick={onResetSync} className="text-[10px] text-rose-500 uppercase tracking-widest font-bold mt-8 border-b border-rose-500/30">Reset</button>
       </div>
     );
   }
 
   // 3. MODE SELECTION (Only show if truly IDLE)
-  if (sharedState.sync_stage === 'idle' && localStage === 'mode_selection') {
+  if (sharedState?.sync_stage === 'idle' && localStage === 'mode_selection') {
     return (
       <div className="animate-in slide-in-from-bottom-4 duration-500 h-full flex flex-col justify-center px-6 space-y-6">
         <div className="text-center mb-4"><Sparkles size={48} className="mx-auto text-violet-500 mb-4" /><h2 className="text-3xl font-light text-white">Connection Mode</h2></div>
@@ -94,8 +97,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   }
 
   // 4. MOOD INPUT 
-  // Show this if (Idle+LocalMood) OR (Input+NoData)
-  const showMoodInput = (sharedState.sync_stage === 'idle' && localStage === 'mood') || (sharedState.sync_stage === 'input' && !myData);
+  const showMoodInput = (sharedState?.sync_stage === 'idle' && localStage === 'mood') || (sharedState?.sync_stage === 'input' && !myData);
 
   if (showMoodInput) {
     const batteryColors = { 1: 'bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.4)]', 2: 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]', 3: 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' };
@@ -143,8 +145,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // --- STAGE 2: LEAD PICKS 3 ---
-  if (sharedState.sync_stage === 'lead_picking') {
+  // --- STAGE 5: LEAD PICKS 3 ---
+  if (sharedState?.sync_stage === 'lead_picking') {
     if (!profile.isUserLead) {
        return (
         <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in">
@@ -166,12 +168,23 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
         return <Flame size={14} className="text-rose-400" />;
     };
 
-    const intensityMap = { 'low': 1, 'medium': 2, 'high': 3 };
-    const leadVal = intensityMap[sharedState.sync_data_lead.intensity];
-    const partnerVal = intensityMap[sharedState.sync_data_partner.intensity];
-    const targetVal = Math.min(leadVal, partnerVal);
+    // --- SAFETY FIX FOR INTENSITY FILTERING ---
+    const intensityMap = { 'low': 1, 'medium': 2, 'high': 3, 1: 1, 2: 2, 3: 3 };
+    const leadVal = intensityMap[sharedState.sync_data_lead.intensity] || 1;
+    const partnerVal = intensityMap[sharedState.sync_data_partner.intensity] || 1;
+    
+    // Logic: If one wants High (3) and other Low (1), meet at Medium (2)
+    const targetVal = Math.min(leadVal, partnerVal); 
     const targetIntensity = targetVal === 3 ? 'high' : targetVal === 2 ? 'medium' : 'low';
-    const options = deck.filter(c => c.intensity === targetIntensity);
+
+    // ROBUST FILTERING: Handles Case-sensitivity and Type mismatch
+    let options = deck.filter(c => 
+        (typeof c.intensity === 'string' && c.intensity.toLowerCase() === targetIntensity) || 
+        (c.intensity === targetVal)
+    );
+
+    // EMERGENCY FALLBACK: If deck is empty or no match, show ALL cards to prevent crash
+    if (options.length === 0) options = deck; 
 
     return (
       <div className="animate-in slide-in-from-right-4 pb-24 px-4 pt-2">
@@ -181,7 +194,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
             <div className="flex flex-col items-center gap-2"><MiniBattery level={sharedState.sync_data_partner?.battery || 1} label="Partner" /><div className="flex items-center gap-1 bg-zinc-900/50 px-2 py-1 rounded-md border border-zinc-800">{getIntensityIcon(sharedState.sync_data_partner?.intensity || 'low')} <span className="text-[9px] font-bold text-zinc-500 uppercase">{sharedState.sync_data_partner?.intensity}</span></div></div>
         </div>
 
-        {/* Increased bottom padding so last item is visible */}
         <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide pb-40">
             {options.map(card => {
               const isPicked = shortlist.includes(card.id);
@@ -194,7 +206,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
             })}
         </div>
         
-        {/* Fixed z-index and bottom positioning */}
         {shortlist.length === 3 && ( 
             <div className="fixed bottom-28 left-6 right-6 z-[100]">
                 <Button className="w-full shadow-2xl shadow-violet-900/50 py-4 text-lg" variant="accent" onClick={() => onLeadSelection(deck.filter(c => shortlist.includes(c.id)))}>
@@ -206,8 +217,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // --- STAGE 3: PARTNER PICKS 1 ---
-  if (sharedState.sync_stage === 'partner_picking') {
+  // --- STAGE 6: PARTNER PICKS 1 ---
+  if (sharedState?.sync_stage === 'partner_picking') {
     if (profile.isUserLead) {
        return (
         <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in">
@@ -253,16 +264,12 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // --- STAGE 4: ACTIVE ---
-  if (sharedState.sync_stage === 'active') {
-     return (
-        <div className="flex flex-col items-center justify-center h-[70vh] text-center space-y-8 animate-in zoom-in duration-500">
-           <div className="bg-emerald-500/10 p-8 rounded-full border border-emerald-500/20 ring-4 ring-emerald-500/10"><CheckCircle2 size={64} className="text-emerald-500" /></div>
-           <div><h1 className="text-4xl font-black text-white uppercase italic tracking-tighter">Connected</h1><p className="text-emerald-500 font-bold uppercase tracking-[0.3em] mt-3 text-xs">Plan Active</p></div>
-           <button onClick={onResetSync} className="text-zinc-600 text-[10px] font-black uppercase hover:text-white mt-12 border-b border-transparent hover:border-white transition-all">Start New Sync</button>
-        </div>
-     );
-  }
 
-  return null;
+  // FALLBACK (PREVENTS BLANK SCREEN)
+  return (
+      <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <RefreshCw size={24} className="animate-spin mb-4 text-zinc-700" />
+          <p className="text-xs font-bold uppercase tracking-widest">Synchronizing...</p>
+      </div>
+  );
 }

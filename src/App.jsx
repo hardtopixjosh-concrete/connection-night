@@ -55,21 +55,23 @@ export default function App() {
 
     const coupleId = profile.couple_id;
 
+    // Listen for Shared State
     const stateChannel = supabase.channel('couple_state_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${coupleId}` }, (payload) => setSharedState(payload.new))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${coupleId}` }, (payload) => {
+          if (payload.new) setSharedState(payload.new);
+      })
       .subscribe();
 
     const profileChannel = supabase.channel('profile_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `couple_id=eq.${coupleId}` }, (payload) => {
-            if (payload.new.id !== session.user.id) setPartnerProfile(payload.new);
-            else setProfile(prev => ({...prev, ...payload.new}));
+            if (session?.user?.id) fetchAllData(session.user.id);
         })
         .subscribe();
     
-    const deckChannel = supabase.channel('deck_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards' }, () => fetchCustomDeck()).subscribe();
-    const itemsChannel = supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items' }, () => fetchCustomItems()).subscribe();
-    const historyChannel = supabase.channel('history_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => fetchHistory()).subscribe();
-    const voucherChannel = supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
+    supabase.channel('deck_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards' }, () => fetchCustomDeck()).subscribe();
+    supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items' }, () => fetchCustomItems()).subscribe();
+    supabase.channel('history_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => fetchHistory()).subscribe();
+    supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
     
     return () => supabase.removeAllChannels();
   }, [profile?.couple_id]); 
@@ -80,23 +82,31 @@ export default function App() {
     let { data: myProfile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
     
     if (!myProfile) {
-        setProfile({ id: userId, couple_id: null, name: 'User' });
+        setProfile({ id: userId, couple_id: null, name: 'User', isUserLead: false });
         setLoading(false);
         return;
     }
 
-    setProfile(myProfile);
-    if (myProfile.hidden_card_ids) setHiddenCards(myProfile.hidden_card_ids);
+    let coupleState = null;
+    let pProfile = null;
 
     if (myProfile.couple_id) {
-        let { data: coupleState } = await supabase.from('couples').select('*').eq('id', myProfile.couple_id).single();
-        setSharedState(coupleState);
-        let { data: pProfile } = await supabase.from('profiles').select('*').eq('couple_id', myProfile.couple_id).neq('id', userId).maybeSingle();
-        setPartnerProfile(pProfile);
-    } else {
-        setSharedState(null);
-        setPartnerProfile(null);
+        let { data: c } = await supabase.from('couples').select('*').eq('id', myProfile.couple_id).single();
+        coupleState = c;
+        let { data: p } = await supabase.from('profiles').select('*').eq('couple_id', myProfile.couple_id).neq('id', userId).maybeSingle();
+        pProfile = p;
     }
+
+    const formattedProfile = {
+        ...myProfile,
+        isUserLead: myProfile.is_lead,
+        partnerName: pProfile ? pProfile.name : 'Partner'
+    };
+
+    setProfile(formattedProfile);
+    if (myProfile.hidden_card_ids) setHiddenCards(myProfile.hidden_card_ids);
+    setSharedState(coupleState);
+    setPartnerProfile(pProfile);
 
     await Promise.all([fetchHistory(), fetchVouchers(), fetchCustomItems(), fetchCustomDeck()]);
     setLoading(false);
@@ -134,16 +144,78 @@ export default function App() {
 
   const handleSignal = async (signalId) => {
     if (!profile?.couple_id) return;
-    const col = profile.is_lead ? 'signal_a' : 'signal_b';
-    const val = (profile.is_lead ? sharedState.signal_a : sharedState.signal_b) === signalId ? null : signalId;
+    const col = profile.isUserLead ? 'signal_a' : 'signal_b';
+    const val = (profile.isUserLead ? sharedState.signal_a : sharedState.signal_b) === signalId ? null : signalId;
+    setSharedState(prev => ({ ...prev, [col]: val }));
     await supabase.from('couples').update({ [col]: val }).eq('id', profile.couple_id);
+  };
+
+  const handleOliveBranchClick = async () => {
+    if (!sharedState) return;
+    let updates = {};
+    if (sharedState.olive_branch_accepted_at) {
+      updates = { olive_branch_accepted_at: null, olive_branch_active: false, olive_branch_sender: null };
+    } else if (!sharedState.olive_branch_active) {
+      updates = { olive_branch_active: true, olive_branch_sender: session.user.id };
+    } else if (sharedState.olive_branch_sender === session.user.id) {
+      updates = { olive_branch_active: false, olive_branch_sender: null };
+    } else {
+      updates = { olive_branch_active: false, olive_branch_sender: null, olive_branch_accepted_at: new Date().toISOString() };
+    }
+    setSharedState(prev => ({ ...prev, ...updates }));
+    await supabase.from('couples').update(updates).eq('id', profile.couple_id);
+  };
+
+  // --- PLAY LOGIC HANDLERS ---
+
+  const handleSyncInput = async (inputs) => {
+    const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
+    
+    // Optimistic Update
+    const optimisticState = { ...sharedState, [col]: inputs, sync_stage: sharedState.sync_stage === 'idle' ? 'input' : sharedState.sync_stage };
+    setSharedState(optimisticState);
+
+    // Database
+    await supabase.from('couples').update({ [col]: inputs, sync_stage: 'input' }).eq('id', profile.couple_id);
+    
+    // Check if both ready (Server function would normally do this, but we do it client side for speed)
+    const leadData = profile.isUserLead ? inputs : sharedState.sync_data_lead;
+    const partnerData = !profile.isUserLead ? inputs : sharedState.sync_data_partner;
+    
+    if (leadData && partnerData) {
+        setSharedState(prev => ({ ...prev, sync_stage: 'lead_picking' }));
+        await supabase.from('couples').update({ sync_stage: 'lead_picking' }).eq('id', profile.couple_id);
+    }
+  };
+
+  const handleLeadSelection = async (threeCards) => {
+    setSharedState(prev => ({ ...prev, sync_pool: threeCards, sync_stage: 'partner_picking' }));
+    await supabase.from('couples').update({ sync_pool: threeCards, sync_stage: 'partner_picking' }).eq('id', profile.couple_id);
+  };
+
+  // --- THIS IS THE FIX FOR "SEND ME BACK" ---
+  const handleFinalSelection = async (finalCard) => {
+     // 1. INSTANTLY switch tab to dashboard
+     setActiveTab('dashboard');
+     
+     // 2. INSTANTLY update state so Dashboard shows it
+     setSharedState(prev => ({ ...prev, sync_stage: 'active', sync_pool: [finalCard] }));
+
+     // 3. Update Database in background
+     await supabase.from('history').insert([{ title: finalCard.title, intensity: finalCard.intensity, created_at: new Date().toISOString() }]);
+     await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
+  };
+  
+  const handleResetSync = async () => {
+    setSharedState(prev => ({ ...prev, sync_stage: 'idle', sync_data_lead: null, sync_data_partner: null, sync_pool: null }));
+    await supabase.from('couples').update({ sync_stage: 'idle', sync_data_lead: null, sync_data_partner: null, sync_pool: null }).eq('id', profile.couple_id);
   };
 
   const handlePurchase = async (item) => {
     if ((profile.tokens || 0) < item.cost) return; 
+    setProfile(prev => ({...prev, tokens: prev.tokens - item.cost}));
     await supabase.from('profiles').update({ tokens: (profile.tokens || 0) - item.cost }).eq('id', session.user.id);
     await supabase.from('vouchers').insert([{ label: item.label, icon_name: 'Ticket' }]);
-    setProfile(prev => ({...prev, tokens: prev.tokens - item.cost}));
   };
 
   // --- RENDER ---
@@ -163,11 +235,39 @@ export default function App() {
         <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 opacity-70 shrink-0" />
         
         <div className="flex-1 overflow-y-auto p-5 scrollbar-hide overscroll-contain pb-24">
-          {activeTab === 'dashboard' && <Dashboard profile={profile} partnerProfile={partnerProfile} syncedConnection={sharedState?.sync_stage === 'active' ? { activity: sharedState.sync_pool[0], desc: 'Synced Plan Active' } : null} partnerSignal={profile?.is_lead ? sharedState?.signal_b : sharedState?.signal_a} setPartnerSignal={() => handleSignal(profile?.is_lead ? sharedState?.signal_b : sharedState?.signal_a)} onSignal={handleSignal} mySignal={profile?.is_lead ? sharedState?.signal_a : sharedState?.signal_b} lastActivityDate={Date.now()} oliveBranchActive={sharedState?.olive_branch_active} oliveBranchSender={sharedState?.olive_branch_sender} oliveBranchAcceptedAt={sharedState?.olive_branch_accepted_at} sessionUserId={session.user.id} syncStage={sharedState?.sync_stage} onNavigate={setActiveTab} />}
+          {activeTab === 'dashboard' && (
+            <Dashboard 
+                profile={profile} 
+                partnerProfile={partnerProfile} 
+                // ENSURE DASHBOARD SEES THE PLAN:
+                syncedConnection={sharedState?.sync_stage === 'active' && sharedState?.sync_pool?.length > 0 ? { activity: sharedState.sync_pool[0], desc: 'Synced Plan Active' } : null} 
+                partnerSignal={profile?.isUserLead ? sharedState?.signal_b : sharedState?.signal_a} 
+                mySignal={profile?.isUserLead ? sharedState?.signal_a : sharedState?.signal_b} 
+                onSignal={handleSignal} 
+                lastActivityDate={Date.now()} 
+                oliveBranchActive={sharedState?.olive_branch_active} 
+                oliveBranchSender={sharedState?.olive_branch_sender} 
+                oliveBranchAcceptedAt={sharedState?.olive_branch_accepted_at} 
+                onOliveBranchClick={handleOliveBranchClick}
+                sessionUserId={session.user.id} 
+                syncStage={sharedState?.sync_stage} 
+                onNavigate={setActiveTab} 
+            />
+          )}
           
           {profile?.couple_id ? (
               <>
-                {activeTab === 'play' && <Play profile={profile} deck={activeDeck} sharedState={sharedState} onSyncInput={() => {}} onLeadSelection={() => {}} onFinalSelection={() => {}} onResetSync={() => {}} />}
+                {activeTab === 'play' && (
+                  <Play 
+                    profile={profile} 
+                    deck={activeDeck} 
+                    sharedState={sharedState} 
+                    onSyncInput={handleSyncInput} 
+                    onLeadSelection={handleLeadSelection} 
+                    onFinalSelection={handleFinalSelection} 
+                    onResetSync={handleResetSync} 
+                  />
+                )}
                 {activeTab === 'store' && <Store tokens={profile?.tokens || 0} onPurchase={handlePurchase} vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} onContribute={() => {}} customItems={customStoreItems} onAddCustomItem={() => {}} onDeleteCustomItem={() => {}} />}
                 {activeTab === 'memories' && <Journal profile={profile} history={history} onAddMemory={() => {}} onDeleteMemory={() => {}} onUpdateMemory={() => {}} />}
               </>
@@ -182,7 +282,7 @@ export default function App() {
             <Config 
                 profile={profile} 
                 partnerProfile={partnerProfile} 
-                sharedState={sharedState} // <--- THIS WAS MISSING
+                sharedState={sharedState} 
                 onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
                 onLogout={handleLogout} 
                 activeDeck={activeDeck} 
