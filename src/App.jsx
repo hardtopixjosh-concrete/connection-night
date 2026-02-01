@@ -229,7 +229,13 @@ export default function App() {
     await supabase.from('vouchers').insert([{ label: item.label, icon_name: 'Ticket' }]);
   };
 
-  if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
+  // --- SAFETY LOADING CHECK ---
+  // If we have a couple ID, but sharedState is still null, FORCE LOADING.
+  // This prevents the "Blank Screen on Login" bug.
+  if (loading || (profile?.couple_id && !sharedState)) {
+      return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
+  }
+  
   if (!session) return <Auth onLoginSuccess={() => fetchAllData(supabase.auth.getUser().then(({data}) => data.user.id))} />;
 
   const NavItem = ({ id, label, icon: Icon }) => (

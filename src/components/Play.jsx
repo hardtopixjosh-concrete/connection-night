@@ -24,6 +24,33 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   const isLead = profile.isUserLead;
   const myData = isLead ? sharedState?.sync_data_lead : sharedState?.sync_data_partner;
 
+  // --- FIX 1: AUTO-RESET WATCHER ---
+  // If the database says "IDLE", force the screen to "MODE SELECTION" instantly.
+  useEffect(() => {
+    if (sharedState?.sync_stage === 'idle') {
+        setLocalStage('mode_selection');
+        setUserBattery(0);
+        setShortlist([]);
+    }
+  }, [sharedState?.sync_stage]);
+
+  // --- FIX 2: AUTO-JUMP to Mood if data missing ---
+  useEffect(() => {
+    if (sharedState?.sync_stage === 'input' && !myData) {
+        setLocalStage('mood');
+    }
+  }, [sharedState?.sync_stage, myData]);
+
+  const handleModeSelect = (mode) => {
+    setLocalStage('mood'); 
+  };
+
+  const handleIntensitySelect = (level) => {
+    // IMMEDIATE EXIT
+    const finalBat = userBattery === 0 ? 1 : userBattery;
+    onSyncInput({ battery: finalBat, intensity: level });
+  };
+
   // --- STAGE 0: ALREADY CONNECTED (CONGRATULATIONS SCREEN) ---
   if (sharedState?.sync_stage === 'active') {
      return (
@@ -42,23 +69,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
         </div>
      );
   }
-
-  // --- AUTO-JUMP to Mood if data missing ---
-  useEffect(() => {
-    if (sharedState?.sync_stage === 'input' && !myData) {
-        setLocalStage('mood');
-    }
-  }, [sharedState?.sync_stage, myData]);
-
-  const handleModeSelect = (mode) => {
-    setLocalStage('mood'); 
-  };
-
-  const handleIntensitySelect = (level) => {
-    // IMMEDIATE EXIT
-    const finalBat = userBattery === 0 ? 1 : userBattery;
-    onSyncInput({ battery: finalBat, intensity: level });
-  };
 
   // --- WAITING SCREEN (Only if I have submitted, waiting for partner) ---
   if (myData && sharedState?.sync_stage === 'input') {
@@ -255,6 +265,11 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // Fallback
-  return <div className="text-zinc-500 flex justify-center h-full items-center">Loading...</div>;
+  // FALLBACK (PREVENTS BLANK SCREEN)
+  return (
+      <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <RefreshCw size={24} className="animate-spin mb-4 text-zinc-700" />
+          <p className="text-xs font-bold uppercase tracking-widest">Synchronizing...</p>
+      </div>
+  );
 }
