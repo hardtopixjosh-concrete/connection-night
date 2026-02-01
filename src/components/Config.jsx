@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { LogOut, Save, RotateCcw, CheckCircle2, Plus, Trash2, Layers, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, User, Heart } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, User, Heart } from 'lucide-react';
 import { Card, Button } from './SharedUI';
-// ... (Your imports remain the same) ...
+import { supabase } from '../supabase';
 
 const LOVE_STYLES = [
   { id: 'compliments', label: 'Compliments', icon: '💬' },
@@ -33,26 +33,54 @@ export default function Config({
   onUnlink,
   onRefresh
 }) {
-  const [name, setName] = useState(profile.name || '');
-  const [focusAreas, setFocusAreas] = useState(profile.partner_focus_areas || []);
+  const [name, setName] = useState('');
+  const [focusAreas, setFocusAreas] = useState([]);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   // Linking State
   const [linkMode, setLinkMode] = useState(null); 
   const [joinCode, setJoinCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [linkError, setLinkError] = useState(null);
   
   // Deck Management State
   const [deckTab, setDeckTab] = useState('low'); 
   const [newCardTitle, setNewCardTitle] = useState('');
   const [newCardDesc, setNewCardDesc] = useState('');
 
-  const handleSave = () => {
-    onUpdateProfile({ name, partner_focus_areas: focusAreas });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  // --- FIX 1: SYNC STATE WHEN PROFILE LOADS ---
+  useEffect(() => {
+    if (profile) {
+        setName(profile.name || '');
+        // Default to empty array if null
+        setFocusAreas(profile.partner_focus_areas || []);
+    }
+  }, [profile]); 
+
+  // --- FIX 2: DIRECT SAVE TO DATABASE ---
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+        // 1. Update DB directly
+        const { error } = await supabase
+            .from('profiles')
+            .update({ name, partner_focus_areas: focusAreas })
+            .eq('id', profile.id);
+            
+        if (error) throw error;
+
+        // 2. Update Local State (App.jsx)
+        onUpdateProfile({ name, partner_focus_areas: focusAreas });
+
+        // 3. Success Feedback
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+        alert("Error saving: " + e.message);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const toggleFocus = (id) => {
@@ -78,22 +106,21 @@ export default function Config({
     try {
         const code = await onCreateLink();
         setGeneratedCode(code);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setLinkError(e.message); }
     setLoading(false);
   };
 
   const handleJoin = async () => {
     setLoading(true);
-    setError(null);
+    setLinkError(null);
     try {
         await onJoinLink(joinCode);
         setLinkMode(null);
         setJoinCode('');
-    } catch (e) { setError(e.message); }
+    } catch (e) { setLinkError(e.message); }
     setLoading(false);
   };
 
-  // Filter deck for current tab
   const displayedCards = activeDeck.filter(c => c.intensity === deckTab);
 
   return (
@@ -186,7 +213,7 @@ export default function Config({
                                 <span className="text-white font-bold text-xs uppercase tracking-wide">
                                     {linkMode === 'create' ? "Generating..." : "Enter Code"}
                                 </span>
-                                <button onClick={() => {setLinkMode(null); setError(null);}} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button>
+                                <button onClick={() => {setLinkMode(null); setLinkError(null);}} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button>
                             </div>
 
                             {linkMode === 'join' && (
@@ -202,7 +229,7 @@ export default function Config({
                                     </button>
                                 </div>
                             )}
-                            {error && <p className="text-rose-500 text-[10px] mt-2 text-center font-bold">{error}</p>}
+                            {linkError && <p className="text-rose-500 text-[10px] mt-2 text-center font-bold">{linkError}</p>}
                         </div>
                     )}
                 </div>
@@ -211,7 +238,7 @@ export default function Config({
         </div>
       </Card>
 
-      {/* --- LOVE LANGUAGES (RESTORED) --- */}
+      {/* --- LOVE LANGUAGES --- */}
       <Card title="My Love Preferences">
         <div className="grid grid-cols-3 gap-2">
           {LOVE_STYLES.map(item => {
@@ -226,7 +253,10 @@ export default function Config({
         </div>
       </Card>
 
-      <Button variant="primary" onClick={handleSave} className="w-full py-4 flex items-center justify-center gap-2">{saved ? <CheckCircle2 size={18} /> : <Save size={18} />}{saved ? 'Changes Saved' : 'Save Changes'}</Button>
+      <Button variant="primary" onClick={handleSave} className="w-full py-4 flex items-center justify-center gap-2" disabled={loading}>
+        {loading ? <RefreshCw className="animate-spin" size={18} /> : (saved ? <CheckCircle2 size={18} /> : <Save size={18} />)}
+        {saved ? 'Changes Saved' : 'Save Changes'}
+      </Button>
 
       <div className="border-t border-zinc-800 my-8" />
 
