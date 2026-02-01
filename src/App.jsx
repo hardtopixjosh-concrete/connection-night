@@ -136,18 +136,12 @@ export default function App() {
         .from('couples')
         .select('id')
         .eq('link_code', cleanCode)
-        .maybeSingle(); // maybeSingle prevents crashing if 0 rows found
+        .maybeSingle();
 
-    if (error) {
-        console.error(error);
-        throw new Error("Database Error: " + error.message);
-    }
+    if (error) throw new Error("Database Error: " + error.message);
+    if (!couple) throw new Error("Invalid Code: No partner found.");
 
-    if (!couple) {
-        throw new Error("Invalid Code: No partner found with this code.");
-    }
-
-    // 3. Update Profile
+    // 3. Update Profile (Link ME to THEM)
     const { error: updateError } = await supabase
         .from('profiles')
         .update({ couple_id: couple.id, is_lead: false })
@@ -155,8 +149,11 @@ export default function App() {
 
     if (updateError) throw new Error("Could not join: " + updateError.message);
 
-    // 4. Refresh App
+    // 4. FORCE REFRESH (The Fix)
+    // We clear the profile first to trigger a reload visual
+    setProfile(null); 
     await fetchAllData(session.user.id); 
+    setActiveTab('dashboard'); // Force send to dashboard
   };
 
   const handleUnlink = async () => {
