@@ -23,7 +23,8 @@ export default function App() {
   const [customDeckCards, setCustomDeckCards] = useState([]);
   const [hiddenCards, setHiddenCards] = useState([]); 
 
-  const activeDeck = [...FULL_DECK, ...customDeckCards].filter(c => !hiddenCards.includes(c.id));
+  // FIX: Force ID to string so the filter works for both Numbers (Default) and Strings (Custom)
+  const activeDeck = [...FULL_DECK, ...customDeckCards].filter(c => !hiddenCards.includes(String(c.id)));
 
   // 1. INITIAL SESSION
   useEffect(() => {
@@ -73,7 +74,11 @@ export default function App() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'history', filter: `couple_id=eq.${coupleId}` }, () => fetchHistory(coupleId))
         .subscribe();
 
-    supabase.channel('deck_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards' }, () => fetchCustomDeck()).subscribe();
+    // Listen for Deck Changes (Scoped to Couple)
+    supabase.channel('deck_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomDeck(coupleId))
+        .subscribe();
+
     supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items' }, () => fetchCustomItems()).subscribe();
     supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
     
@@ -114,9 +119,9 @@ export default function App() {
 
     await Promise.all([
         myProfile.couple_id ? fetchHistory(myProfile.couple_id) : Promise.resolve(),
+        myProfile.couple_id ? fetchCustomDeck(myProfile.couple_id) : Promise.resolve(), // Pass ID explicitly
         fetchVouchers(), 
-        fetchCustomItems(), 
-        fetchCustomDeck()
+        fetchCustomItems()
     ]);
     setLoading(false);
   }
@@ -131,7 +136,24 @@ export default function App() {
 
   const fetchVouchers = async () => { const { data } = await supabase.from('vouchers').select('*').eq('redeemed', false); setVouchers(data || []); };
   const fetchCustomItems = async () => { const { data } = await supabase.from('custom_store_items').select('*'); setCustomStoreItems(data || []); };
-  const fetchCustomDeck = async () => { const { data } = await supabase.from('custom_deck_cards').select('*'); setCustomDeckCards(data || []); };
+  
+  // --- UPDATED: Fetch only OUR couple's cards ---
+  const fetchCustomDeck = async (targetCoupleId) => { 
+      // Fallback if ID not passed but profile exists
+      const cId = targetCoupleId || profile?.couple_id;
+      if (!cId) return;
+
+      const { data } = await supabase
+          .from('custom_deck_cards')
+          .select('*')
+          .eq('couple_id', cId); // Scope query
+      
+      const mappedCards = (data || []).map(c => ({
+          ...c,
+          desc: c.desc_text 
+      }));
+      setCustomDeckCards(mappedCards); 
+  };
 
   const handleCreateLink = async () => {
     const code = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -236,7 +258,6 @@ export default function App() {
      const partnerReq = getInt(sharedState.sync_data_partner?.intensity);
      const finalInt = getInt(finalCard.intensity);
 
-     // Check Lead Compromise
      if (leadReq > finalInt) {
          const leadId = profile.isUserLead ? profile.id : partnerProfile?.id;
          if (leadId) {
@@ -246,7 +267,6 @@ export default function App() {
          }
      }
 
-     // Check Partner Compromise
      if (partnerReq > finalInt) {
          const partnerId = !profile.isUserLead ? profile.id : partnerProfile?.id;
          if (partnerId) {
@@ -256,7 +276,6 @@ export default function App() {
          }
      }
 
-     // 2. Save History
      await supabase.from('history').insert([{ 
          title: finalCard.title, 
          intensity: finalCard.intensity, 
@@ -264,17 +283,13 @@ export default function App() {
          created_at: new Date().toISOString() 
      }]);
 
-     // 3. Update Couple State
      await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
 
-     // --- ROLE SWAP LOGIC ---
      if (partnerProfile) {
          const myNewRole = !profile.isUserLead;
          const partnerNewRole = profile.isUserLead;
-         
          await supabase.from('profiles').update({ is_lead: myNewRole }).eq('id', session.user.id);
          await supabase.from('profiles').update({ is_lead: partnerNewRole }).eq('id', partnerProfile.id);
-         
          setProfile(prev => ({ ...prev, isUserLead: myNewRole }));
      }
   };
@@ -291,7 +306,6 @@ export default function App() {
     await supabase.from('vouchers').insert([{ label: item.label, icon_name: 'Ticket' }]);
   };
 
-  // --- SAFETY LOADING CHECK ---
   if (loading || (profile?.couple_id && !sharedState)) {
       return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
   }
@@ -370,7 +384,7 @@ export default function App() {
               </div>
           )}
 
-{activeTab === 'setup' && (
+          {activeTab === 'setup' && (
             <Config 
                 profile={profile} 
                 partnerProfile={partnerProfile} 
@@ -378,28 +392,29 @@ export default function App() {
                 onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
                 onLogout={handleLogout} 
                 activeDeck={activeDeck} 
-                
-                // --- FIX: Wire up Adding Cards ---
+
+                // --- UPDATED: Save Card with Couple ID ---
                 onAddDeckCard={async (newCard) => {
-                    // Save to database
-                    const { error } = await supabase.from('custom_deck_cards').insert([newCard]);
+                    const cardPayload = {
+                        title: newCard.title,
+                        intensity: newCard.intensity,
+                        category: newCard.category,
+                        desc_text: newCard.desc,
+                        couple_id: profile.couple_id // <--- CRITICAL TAG
+                    };
+                    const { error } = await supabase.from('custom_deck_cards').insert([cardPayload]);
                     if (error) alert(error.message);
-                    else fetchCustomDeck(); // Refresh list
+                    else fetchCustomDeck(profile.couple_id); 
                 }} 
 
-                // --- FIX: Wire up Deleting Cards ---
                 onDeleteDeckCard={async (card) => {
-                    // Check if this is a Custom Card (exists in the custom list)
                     const isCustom = customDeckCards.some(c => c.id === card.id);
-
                     if (isCustom) {
-                        // 1. If Custom: Delete from DB entirely
                         await supabase.from('custom_deck_cards').delete().eq('id', card.id);
-                        fetchCustomDeck();
+                        fetchCustomDeck(profile.couple_id);
                     } else {
-                        // 2. If Standard: Hide it (add to profile hidden list)
                         const newHidden = [...hiddenCards, card.id];
-                        setHiddenCards(newHidden); // Update local instantly
+                        setHiddenCards(newHidden);
                         await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', session.user.id);
                     }
                 }}
