@@ -127,18 +127,41 @@ export default function App() {
   };
 
   const handleJoinLink = async (code) => {
-    const cleanCode = code.trim().toUpperCase();
-    const { data: couple, error } = await supabase.from('couples').select('id').eq('link_code', cleanCode).maybeSingle();
+    // 1. Show Loading Screen (Prevents UI Crash)
+    setLoading(true);
 
-    if (error) throw new Error("Database Error: " + error.message);
-    if (!couple) throw new Error("Invalid Code: No partner found.");
+    try {
+        const cleanCode = code.trim().toUpperCase();
+        
+        // 2. Find the couple
+        const { data: couple, error } = await supabase
+            .from('couples')
+            .select('id')
+            .eq('link_code', cleanCode)
+            .maybeSingle();
 
-    const { error: updateError } = await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
-    if (updateError) throw new Error("Could not join: " + updateError.message);
+        if (error) throw new Error("Database Error: " + error.message);
+        if (!couple) throw new Error("Invalid Code: No partner found.");
 
-    setProfile(null); 
-    await fetchAllData(session.user.id); 
-    setActiveTab('dashboard'); 
+        // 3. Update Profile
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ couple_id: couple.id, is_lead: false })
+            .eq('id', session.user.id);
+
+        if (updateError) throw new Error("Could not join: " + updateError.message);
+
+        // 4. Refresh Data
+        await fetchAllData(session.user.id); 
+        
+        // 5. Go to Dashboard
+        setActiveTab('dashboard');
+        
+    } catch (e) {
+        alert(e.message); // Show error if it fails
+    } finally {
+        setLoading(false); // Hide Loading Screen
+    }
   };
 
   const handleUnlink = async () => {
