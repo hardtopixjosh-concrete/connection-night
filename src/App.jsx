@@ -126,10 +126,36 @@ export default function App() {
     return code;
   };
 
+  // --- IMPROVED JOIN HANDLER ---
   const handleJoinLink = async (code) => {
-    const { data: couple } = await supabase.from('couples').select('id').eq('link_code', code.toUpperCase()).single();
-    if (!couple) throw new Error("Invalid Code");
-    await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
+    // 1. Force Upper Case
+    const cleanCode = code.trim().toUpperCase();
+    
+    // 2. Find the couple
+    const { data: couple, error } = await supabase
+        .from('couples')
+        .select('id')
+        .eq('link_code', cleanCode)
+        .maybeSingle(); // maybeSingle prevents crashing if 0 rows found
+
+    if (error) {
+        console.error(error);
+        throw new Error("Database Error: " + error.message);
+    }
+
+    if (!couple) {
+        throw new Error("Invalid Code: No partner found with this code.");
+    }
+
+    // 3. Update Profile
+    const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ couple_id: couple.id, is_lead: false })
+        .eq('id', session.user.id);
+
+    if (updateError) throw new Error("Could not join: " + updateError.message);
+
+    // 4. Refresh App
     await fetchAllData(session.user.id); 
   };
 
@@ -166,19 +192,13 @@ export default function App() {
     await supabase.from('couples').update(updates).eq('id', profile.couple_id);
   };
 
-  // --- PLAY LOGIC HANDLERS ---
-
   const handleSyncInput = async (inputs) => {
     const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
-    
-    // Optimistic Update
     const optimisticState = { ...sharedState, [col]: inputs, sync_stage: sharedState.sync_stage === 'idle' ? 'input' : sharedState.sync_stage };
     setSharedState(optimisticState);
 
-    // Database
     await supabase.from('couples').update({ [col]: inputs, sync_stage: 'input' }).eq('id', profile.couple_id);
     
-    // Check if both ready (Server function would normally do this, but we do it client side for speed)
     const leadData = profile.isUserLead ? inputs : sharedState.sync_data_lead;
     const partnerData = !profile.isUserLead ? inputs : sharedState.sync_data_partner;
     
@@ -193,15 +213,9 @@ export default function App() {
     await supabase.from('couples').update({ sync_pool: threeCards, sync_stage: 'partner_picking' }).eq('id', profile.couple_id);
   };
 
-  // --- THIS IS THE FIX FOR "SEND ME BACK" ---
   const handleFinalSelection = async (finalCard) => {
-     // 1. INSTANTLY switch tab to dashboard
      setActiveTab('dashboard');
-     
-     // 2. INSTANTLY update state so Dashboard shows it
      setSharedState(prev => ({ ...prev, sync_stage: 'active', sync_pool: [finalCard] }));
-
-     // 3. Update Database in background
      await supabase.from('history').insert([{ title: finalCard.title, intensity: finalCard.intensity, created_at: new Date().toISOString() }]);
      await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
   };
@@ -218,7 +232,6 @@ export default function App() {
     await supabase.from('vouchers').insert([{ label: item.label, icon_name: 'Ticket' }]);
   };
 
-  // --- RENDER ---
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
   if (!session) return <Auth onLoginSuccess={() => fetchAllData(supabase.auth.getUser().then(({data}) => data.user.id))} />;
 
@@ -239,7 +252,6 @@ export default function App() {
             <Dashboard 
                 profile={profile} 
                 partnerProfile={partnerProfile} 
-                // ENSURE DASHBOARD SEES THE PLAN:
                 syncedConnection={sharedState?.sync_stage === 'active' && sharedState?.sync_pool?.length > 0 ? { activity: sharedState.sync_pool[0], desc: 'Synced Plan Active' } : null} 
                 partnerSignal={profile?.isUserLead ? sharedState?.signal_b : sharedState?.signal_a} 
                 mySignal={profile?.isUserLead ? sharedState?.signal_a : sharedState?.signal_b} 
