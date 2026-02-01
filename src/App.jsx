@@ -126,48 +126,27 @@ export default function App() {
     return code;
   };
 
-  // --- IMPROVED JOIN HANDLER ---
   const handleJoinLink = async (code) => {
-    // 1. Force Upper Case
     const cleanCode = code.trim().toUpperCase();
-    
-    // 2. Find the couple
-    const { data: couple, error } = await supabase
-        .from('couples')
-        .select('id')
-        .eq('link_code', cleanCode)
-        .maybeSingle();
+    const { data: couple, error } = await supabase.from('couples').select('id').eq('link_code', cleanCode).maybeSingle();
 
     if (error) throw new Error("Database Error: " + error.message);
     if (!couple) throw new Error("Invalid Code: No partner found.");
 
-    // 3. Update Profile (Link ME to THEM)
-    const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ couple_id: couple.id, is_lead: false })
-        .eq('id', session.user.id);
-
+    const { error: updateError } = await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
     if (updateError) throw new Error("Could not join: " + updateError.message);
 
-    // 4. FORCE REFRESH (The Fix)
-    // We clear the profile first to trigger a reload visual
     setProfile(null); 
     await fetchAllData(session.user.id); 
-    setActiveTab('dashboard'); // Force send to dashboard
+    setActiveTab('dashboard'); 
   };
 
   const handleUnlink = async () => {
-    // Call the database function we just made
     const { error } = await supabase.rpc('disconnect_partner');
-    
     if (error) console.error("Unlink failed:", error);
-
-    // Clear local state immediately
     setProfile(prev => ({ ...prev, couple_id: null }));
     setPartnerProfile(null);
     setSharedState(null);
-    
-    // Refresh to be safe
     await fetchAllData(session.user.id);
   };
   
@@ -197,13 +176,20 @@ export default function App() {
     await supabase.from('couples').update(updates).eq('id', profile.couple_id);
   };
 
-  const handleSyncInput = async (inputs) => {
-    const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
-    const optimisticState = { ...sharedState, [col]: inputs, sync_stage: sharedState.sync_stage === 'idle' ? 'input' : sharedState.sync_stage };
-    setSharedState(optimisticState);
+  // --- PLAY LOGIC (UPDATED FOR INSTANT EXIT) ---
 
+  const handleSyncInput = async (inputs) => {
+    // 1. Instantly go to Dashboard
+    setActiveTab('dashboard');
+
+    // 2. Optimistic Update
+    const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
+    setSharedState(prev => ({ ...prev, [col]: inputs, sync_stage: prev.sync_stage === 'idle' ? 'input' : prev.sync_stage }));
+
+    // 3. Database Updates in background
     await supabase.from('couples').update({ [col]: inputs, sync_stage: 'input' }).eq('id', profile.couple_id);
     
+    // Check if both ready
     const leadData = profile.isUserLead ? inputs : sharedState.sync_data_lead;
     const partnerData = !profile.isUserLead ? inputs : sharedState.sync_data_partner;
     
@@ -214,7 +200,13 @@ export default function App() {
   };
 
   const handleLeadSelection = async (threeCards) => {
+    // 1. Instantly go to Dashboard
+    setActiveTab('dashboard');
+
+    // 2. Optimistic Update
     setSharedState(prev => ({ ...prev, sync_pool: threeCards, sync_stage: 'partner_picking' }));
+    
+    // 3. Database Update
     await supabase.from('couples').update({ sync_pool: threeCards, sync_stage: 'partner_picking' }).eq('id', profile.couple_id);
   };
 

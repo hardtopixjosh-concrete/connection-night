@@ -24,46 +24,44 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   const isLead = profile.isUserLead;
   const myData = isLead ? sharedState?.sync_data_lead : sharedState?.sync_data_partner;
 
-  // --- AUTO-JUMP: If partner joins late, skip mode select ---
+  // --- STAGE 0: ALREADY CONNECTED (CONGRATULATIONS SCREEN) ---
+  if (sharedState?.sync_stage === 'active') {
+     return (
+        <div className="flex flex-col items-center justify-center h-[70vh] text-center space-y-8 animate-in zoom-in duration-500 px-6">
+           <div className="bg-emerald-500/10 p-8 rounded-full border border-emerald-500/20 ring-4 ring-emerald-500/10">
+               <CheckCircle2 size={64} className="text-emerald-500" />
+           </div>
+           <div>
+               <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">Congratulations</h1>
+               <p className="text-zinc-400 mt-2 text-sm leading-relaxed">You have completed a connection.</p>
+           </div>
+           
+           <Button variant="primary" onClick={onResetSync} className="w-full py-4 uppercase font-black tracking-widest text-xs">
+               Start New Connection
+           </Button>
+        </div>
+     );
+  }
+
+  // --- AUTO-JUMP to Mood if data missing ---
   useEffect(() => {
     if (sharedState?.sync_stage === 'input' && !myData) {
         setLocalStage('mood');
     }
   }, [sharedState?.sync_stage, myData]);
 
-  // --- HANDLERS ---
   const handleModeSelect = (mode) => {
     setLocalStage('mood'); 
   };
 
   const handleIntensitySelect = (level) => {
+    // IMMEDIATE EXIT
     const finalBat = userBattery === 0 ? 1 : userBattery;
-    
-    // 1. Show Spinner
-    setLocalStage('syncing');
-    
-    // 2. Wait, Send Data
-    setTimeout(() => {
-        onSyncInput({ battery: finalBat, intensity: level });
-        // FIX: Don't set to null, set to 'waiting' so we don't flash a blank screen
-        setLocalStage('waiting'); 
-    }, 1500);
+    onSyncInput({ battery: finalBat, intensity: level });
   };
 
-  // --- RENDER LOGIC ---
-
-  // 1. SYNCING ANIMATION (Local) - High Priority check
-  if (localStage === 'syncing') {
-      return (
-        <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-pulse">
-            <RefreshCw size={40} className="text-violet-500 animate-spin" />
-            <p className="text-zinc-500 text-sm font-medium mt-6 uppercase tracking-[0.2em]">Resolving Vibe...</p>
-        </div>
-      );
-  }
-
-  // 2. WAITING SCREEN (If I submitted, or local stage says waiting)
-  if (localStage === 'waiting' || (myData && sharedState?.sync_stage === 'input')) {
+  // --- WAITING SCREEN (Only if I have submitted, waiting for partner) ---
+  if (myData && sharedState?.sync_stage === 'input') {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in px-6">
         <div className="bg-zinc-900 p-8 rounded-full border border-zinc-800 relative">
@@ -73,13 +71,12 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
           <h2 className="text-xl font-bold text-white tracking-tight">Vibe Locked In</h2>
           <p className="text-zinc-500 text-xs mt-2 font-bold uppercase tracking-widest">Waiting for partner...</p>
         </div>
-        {/* ADDED RESET BUTTON IN CASE STUCK */}
         <button onClick={onResetSync} className="text-[10px] text-rose-500 uppercase tracking-widest font-bold mt-8 border-b border-rose-500/30">Reset</button>
       </div>
     );
   }
 
-  // 3. MODE SELECTION (Only show if truly IDLE)
+  // --- MODE SELECTION ---
   if (sharedState?.sync_stage === 'idle' && localStage === 'mode_selection') {
     return (
       <div className="animate-in slide-in-from-bottom-4 duration-500 h-full flex flex-col justify-center px-6 space-y-6">
@@ -96,7 +93,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // 4. MOOD INPUT 
+  // --- MOOD INPUT ---
   const showMoodInput = (sharedState?.sync_stage === 'idle' && localStage === 'mood') || (sharedState?.sync_stage === 'input' && !myData);
 
   if (showMoodInput) {
@@ -168,22 +165,16 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
         return <Flame size={14} className="text-rose-400" />;
     };
 
-    // --- SAFETY FIX FOR INTENSITY FILTERING ---
     const intensityMap = { 'low': 1, 'medium': 2, 'high': 3, 1: 1, 2: 2, 3: 3 };
     const leadVal = intensityMap[sharedState.sync_data_lead.intensity] || 1;
     const partnerVal = intensityMap[sharedState.sync_data_partner.intensity] || 1;
-    
-    // Logic: If one wants High (3) and other Low (1), meet at Medium (2)
     const targetVal = Math.min(leadVal, partnerVal); 
     const targetIntensity = targetVal === 3 ? 'high' : targetVal === 2 ? 'medium' : 'low';
 
-    // ROBUST FILTERING: Handles Case-sensitivity and Type mismatch
     let options = deck.filter(c => 
         (typeof c.intensity === 'string' && c.intensity.toLowerCase() === targetIntensity) || 
         (c.intensity === targetVal)
     );
-
-    // EMERGENCY FALLBACK: If deck is empty or no match, show ALL cards to prevent crash
     if (options.length === 0) options = deck; 
 
     return (
@@ -264,12 +255,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-
-  // FALLBACK (PREVENTS BLANK SCREEN)
-  return (
-      <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-          <RefreshCw size={24} className="animate-spin mb-4 text-zinc-700" />
-          <p className="text-xs font-bold uppercase tracking-widest">Synchronizing...</p>
-      </div>
-  );
+  // Fallback
+  return <div className="text-zinc-500 flex justify-center h-full items-center">Loading...</div>;
 }
