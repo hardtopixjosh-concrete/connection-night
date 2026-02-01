@@ -68,7 +68,7 @@ export default function App() {
         })
         .subscribe();
     
-    // Listen for History (FIXED: Filter by couple ID)
+    // Listen for History
     const historyChannel = supabase.channel('history_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'history', filter: `couple_id=eq.${coupleId}` }, () => fetchHistory(coupleId))
         .subscribe();
@@ -112,7 +112,6 @@ export default function App() {
     setSharedState(coupleState);
     setPartnerProfile(pProfile);
 
-    // FIXED: Pass couple ID to fetchHistory
     await Promise.all([
         myProfile.couple_id ? fetchHistory(myProfile.couple_id) : Promise.resolve(),
         fetchVouchers(), 
@@ -124,7 +123,6 @@ export default function App() {
 
   // --- ACTIONS ---
   
-  // FIXED: Accepts coupleId to filter correctly
   const fetchHistory = async (targetCoupleId) => { 
     if (!targetCoupleId) return;
     const { data } = await supabase.from('history').select('*').eq('couple_id', targetCoupleId).order('created_at', { ascending: false }); 
@@ -144,40 +142,24 @@ export default function App() {
   };
 
   const handleJoinLink = async (code) => {
-    // 1. Show Loading Screen (Prevents UI Crash)
     setLoading(true);
-
     try {
         const cleanCode = code.trim().toUpperCase();
-        
-        // 2. Find the couple
-        const { data: couple, error } = await supabase
-            .from('couples')
-            .select('id')
-            .eq('link_code', cleanCode)
-            .maybeSingle();
+        const { data: couple, error } = await supabase.from('couples').select('id').eq('link_code', cleanCode).maybeSingle();
 
         if (error) throw new Error("Database Error: " + error.message);
         if (!couple) throw new Error("Invalid Code: No partner found.");
 
-        // 3. Update Profile
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ couple_id: couple.id, is_lead: false })
-            .eq('id', session.user.id);
+        const { error: updateError } = await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
 
         if (updateError) throw new Error("Could not join: " + updateError.message);
 
-        // 4. Refresh Data
         await fetchAllData(session.user.id); 
-        
-        // 5. Go to Dashboard
         setActiveTab('dashboard');
-        
     } catch (e) {
-        alert(e.message); // Show error if it fails
+        alert(e.message); 
     } finally {
-        setLoading(false); // Hide Loading Screen
+        setLoading(false); 
     }
   };
 
@@ -216,20 +198,14 @@ export default function App() {
     await supabase.from('couples').update(updates).eq('id', profile.couple_id);
   };
 
-  // --- PLAY LOGIC (UPDATED FOR INSTANT EXIT) ---
+  // --- PLAY LOGIC ---
 
   const handleSyncInput = async (inputs) => {
-    // 1. Instantly go to Dashboard
     setActiveTab('dashboard');
-
-    // 2. Optimistic Update
     const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
     setSharedState(prev => ({ ...prev, [col]: inputs, sync_stage: prev.sync_stage === 'idle' ? 'input' : prev.sync_stage }));
-
-    // 3. Database Updates in background
     await supabase.from('couples').update({ [col]: inputs, sync_stage: 'input' }).eq('id', profile.couple_id);
     
-    // Check if both ready
     const leadData = profile.isUserLead ? inputs : sharedState.sync_data_lead;
     const partnerData = !profile.isUserLead ? inputs : sharedState.sync_data_partner;
     
@@ -240,18 +216,12 @@ export default function App() {
   };
 
   const handleLeadSelection = async (threeCards) => {
-    // 1. Instantly go to Dashboard
     setActiveTab('dashboard');
-
-    // 2. Optimistic Update
     setSharedState(prev => ({ ...prev, sync_pool: threeCards, sync_stage: 'partner_picking' }));
-    
-    // 3. Database Update
     await supabase.from('couples').update({ sync_pool: threeCards, sync_stage: 'partner_picking' }).eq('id', profile.couple_id);
   };
 
   const handleFinalSelection = async (finalCard) => {
-     // 1. Instantly go to Dashboard
      setActiveTab('dashboard');
      setSharedState(prev => ({ ...prev, sync_stage: 'active', sync_pool: [finalCard] }));
      
@@ -285,7 +255,6 @@ export default function App() {
              if (!profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
          }
      }
-     // ---------------------------
 
      // 2. Save History
      await supabase.from('history').insert([{ 
@@ -298,19 +267,16 @@ export default function App() {
      // 3. Update Couple State
      await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
 
-     // --- THE FIX: SWAP ROLES ---
-     // I flip to the opposite of what I was. Partner flips to what I was.
+     // --- ROLE SWAP LOGIC ---
      if (partnerProfile) {
          const myNewRole = !profile.isUserLead;
-         const partnerNewRole = profile.isUserLead; // They take my old role
+         const partnerNewRole = profile.isUserLead;
          
          await supabase.from('profiles').update({ is_lead: myNewRole }).eq('id', session.user.id);
          await supabase.from('profiles').update({ is_lead: partnerNewRole }).eq('id', partnerProfile.id);
          
-         // Update local state immediately so UI reflects it
          setProfile(prev => ({ ...prev, isUserLead: myNewRole }));
      }
-     // ---------------------------
   };
   
   const handleResetSync = async () => {
@@ -326,8 +292,6 @@ export default function App() {
   };
 
   // --- SAFETY LOADING CHECK ---
-  // If we have a couple ID, but sharedState is still null, FORCE LOADING.
-  // This prevents the "Blank Screen on Login" bug.
   if (loading || (profile?.couple_id && !sharedState)) {
       return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
   }
@@ -380,7 +344,24 @@ export default function App() {
                   />
                 )}
                 {activeTab === 'store' && <Store tokens={profile?.tokens || 0} onPurchase={handlePurchase} vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} onContribute={() => {}} customItems={customStoreItems} onAddCustomItem={() => {}} onDeleteCustomItem={() => {}} />}
-                {activeTab === 'memories' && <Journal profile={profile} history={history} onAddMemory={() => {}} onDeleteMemory={() => {}} onUpdateMemory={() => {}} />}
+                {activeTab === 'memories' && (
+                  <Journal 
+                    profile={profile} 
+                    history={history} 
+                    onAddMemory={async (newMem) => {
+                        await supabase.from('history').insert([{ ...newMem, couple_id: profile.couple_id }]);
+                        fetchHistory(profile.couple_id);
+                    }} 
+                    onDeleteMemory={async (id) => {
+                        await supabase.from('history').delete().eq('id', id);
+                        fetchHistory(profile.couple_id);
+                    }} 
+                    onUpdateMemory={async (id, updates) => {
+                        await supabase.from('history').update(updates).eq('id', id);
+                        fetchHistory(profile.couple_id);
+                    }} 
+                  />
+                )}
               </>
           ) : (activeTab !== 'dashboard' && activeTab !== 'setup') && (
               <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
@@ -389,7 +370,7 @@ export default function App() {
               </div>
           )}
 
-          {activeTab === 'setup' && (
+{activeTab === 'setup' && (
             <Config 
                 profile={profile} 
                 partnerProfile={partnerProfile} 
@@ -397,8 +378,32 @@ export default function App() {
                 onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
                 onLogout={handleLogout} 
                 activeDeck={activeDeck} 
-                onAddDeckCard={() => {}} 
-                onDeleteDeckCard={() => {}} 
+                
+                // --- FIX: Wire up Adding Cards ---
+                onAddDeckCard={async (newCard) => {
+                    // Save to database
+                    const { error } = await supabase.from('custom_deck_cards').insert([newCard]);
+                    if (error) alert(error.message);
+                    else fetchCustomDeck(); // Refresh list
+                }} 
+
+                // --- FIX: Wire up Deleting Cards ---
+                onDeleteDeckCard={async (card) => {
+                    // Check if this is a Custom Card (exists in the custom list)
+                    const isCustom = customDeckCards.some(c => c.id === card.id);
+
+                    if (isCustom) {
+                        // 1. If Custom: Delete from DB entirely
+                        await supabase.from('custom_deck_cards').delete().eq('id', card.id);
+                        fetchCustomDeck();
+                    } else {
+                        // 2. If Standard: Hide it (add to profile hidden list)
+                        const newHidden = [...hiddenCards, card.id];
+                        setHiddenCards(newHidden); // Update local instantly
+                        await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', session.user.id);
+                    }
+                }}
+                
                 onCreateLink={handleCreateLink}
                 onJoinLink={handleJoinLink}
                 onUnlink={handleUnlink}
