@@ -1,7 +1,22 @@
 import React, { useState } from 'react';
-import { LogOut, Save, RotateCcw, CheckCircle2, Plus, Trash2, Layers, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, User } from 'lucide-react';
+import { LogOut, Save, RotateCcw, CheckCircle2, Plus, Trash2, Layers, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, User, Heart } from 'lucide-react';
 import { Card, Button } from './SharedUI';
-import { MICRO_CONNECTIONS } from '../data/gameData';
+// ... (Your imports remain the same) ...
+
+const LOVE_STYLES = [
+  { id: 'compliments', label: 'Compliments', icon: '💬' },
+  { id: 'conversations', label: 'Conversations', icon: '🗣️' },
+  { id: 'hugs', label: 'Hugs', icon: '🤗' },
+  { id: 'sitting_close', label: 'Sitting Close', icon: '🛋️' },
+  { id: 'public_affection', label: 'Public Affection', icon: '🤝' },
+  { id: 'massages', label: 'Massages', icon: '💆' },
+  { id: 'activities', label: 'Activities', icon: '🏃' },
+  { id: 'cuddling', label: 'Cuddling', icon: '🧸' },
+  { id: 'acts', label: 'Acts of Service', icon: '🛠️' },
+  { id: 'gifts', label: 'Gifts', icon: '🎁' },
+  { id: 'flowers', label: 'Flowers', icon: '🌹' },
+  { id: 'chores', label: 'Chores', icon: '🧹' }
+];
 
 export default function Config({ 
   profile, 
@@ -18,9 +33,8 @@ export default function Config({
   onUnlink,
   onRefresh
 }) {
-  const [name, setName] = useState(profile.name);
-  // partnerName is now derived from the real partner data, not local state
-  const [focusAreas, setFocusAreas] = useState(profile.partnerFocusAreas || []);
+  const [name, setName] = useState(profile.name || '');
+  const [focusAreas, setFocusAreas] = useState(profile.partner_focus_areas || []);
   const [saved, setSaved] = useState(false);
   
   // Linking State
@@ -31,12 +45,11 @@ export default function Config({
   const [error, setError] = useState(null);
   
   // Deck Management State
-  const [deckTab, setDeckTab] = useState('low'); // 'low', 'medium', 'high'
+  const [deckTab, setDeckTab] = useState('low'); 
   const [newCardTitle, setNewCardTitle] = useState('');
   const [newCardDesc, setNewCardDesc] = useState('');
 
   const handleSave = () => {
-    // We don't save partner_name anymore since it comes from the link
     onUpdateProfile({ name, partner_focus_areas: focusAreas });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -198,12 +211,17 @@ export default function Config({
         </div>
       </Card>
 
-      {/* --- LOVE LANGUAGES --- */}
-      <Card title="My Love Languages (Daily Drop)">
-        <div className="grid grid-cols-2 gap-2">
-          {MICRO_CONNECTIONS.map(item => {
+      {/* --- LOVE LANGUAGES (RESTORED) --- */}
+      <Card title="My Love Preferences">
+        <div className="grid grid-cols-3 gap-2">
+          {LOVE_STYLES.map(item => {
             const isSelected = focusAreas.includes(item.id);
-            return (<button key={item.id} onClick={() => toggleFocus(item.id)} className={`p-3 rounded-xl border text-left text-xs font-bold transition-all flex items-center justify-between ${isSelected ? 'bg-violet-900/20 border-violet-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}><span>{item.label}</span>{isSelected && <CheckCircle2 size={12} className="text-violet-500" />}</button>);
+            return (
+                <button key={item.id} onClick={() => toggleFocus(item.id)} className={`p-2 rounded-xl border flex flex-col items-center gap-1 transition-all ${isSelected ? 'bg-violet-900/20 border-violet-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}>
+                    <span className="text-lg">{item.icon}</span>
+                    <span className="text-[9px] font-bold uppercase whitespace-nowrap">{item.label}</span>
+                </button>
+            );
           })}
         </div>
       </Card>
@@ -215,8 +233,6 @@ export default function Config({
       {/* --- DECK MANAGER --- */}
       <div>
         <h2 className="text-xl font-bold text-white mb-4">Manage Activity Deck</h2>
-        
-        {/* Intensity Tabs */}
         <div className="flex bg-zinc-900 rounded-xl p-1 border border-zinc-800 mb-4">
             {['low', 'medium', 'high'].map(i => (
                 <button key={i} onClick={() => setDeckTab(i)} className={`flex-1 py-3 rounded-lg flex flex-col items-center gap-1 transition-all ${deckTab === i ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
@@ -225,8 +241,6 @@ export default function Config({
                 </button>
             ))}
         </div>
-
-        {/* Add Card Form */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Add New {deckTab} Card</h3>
             <div className="space-y-2">
@@ -235,15 +249,10 @@ export default function Config({
                 <Button variant="accent" onClick={handleAddCard} className="w-full py-2 text-xs">Add to Deck</Button>
             </div>
         </div>
-
-        {/* Card List */}
         <div className="space-y-2">
             {displayedCards.map(card => (
                 <div key={card.id} className="flex justify-between items-start bg-zinc-900 p-3 rounded-xl border border-zinc-800">
-                    <div>
-                        <h4 className="text-sm font-bold text-white">{card.title}</h4>
-                        <p className="text-[10px] text-zinc-500">{card.desc}</p>
-                    </div>
+                    <div><h4 className="text-sm font-bold text-white">{card.title}</h4><p className="text-[10px] text-zinc-500">{card.desc}</p></div>
                     <button onClick={() => onDeleteDeckCard(card)} className="text-zinc-600 hover:text-rose-500 p-2"><Trash2 size={16} /></button>
                 </div>
             ))}
@@ -251,8 +260,6 @@ export default function Config({
       </div>
 
       <div className="border-t border-zinc-800 my-8" />
-
-      {/* --- DANGER ZONE --- */}
       <div className="space-y-4">
         <h3 className="text-xs font-black text-rose-500 uppercase tracking-widest">System</h3>
         <button onClick={() => { if(window.confirm("Reset tokens to 0 and clear the vault?")) onResetEconomy(); }} className="w-full p-4 rounded-xl border border-rose-900/30 bg-rose-950/10 text-rose-400 text-sm font-bold flex items-center justify-between hover:bg-rose-950/20 transition-all"><span>Reset Economy</span><RotateCcw size={16} /></button>

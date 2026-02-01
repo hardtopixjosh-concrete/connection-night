@@ -160,10 +160,18 @@ export default function App() {
   };
 
   const handleUnlink = async () => {
-    await supabase.from('profiles').update({ couple_id: null }).eq('id', session.user.id);
+    // Call the database function we just made
+    const { error } = await supabase.rpc('disconnect_partner');
+    
+    if (error) console.error("Unlink failed:", error);
+
+    // Clear local state immediately
     setProfile(prev => ({ ...prev, couple_id: null }));
     setPartnerProfile(null);
     setSharedState(null);
+    
+    // Refresh to be safe
+    await fetchAllData(session.user.id);
   };
   
   const handleLogout = async () => { await supabase.auth.signOut(); setSession(null); };
