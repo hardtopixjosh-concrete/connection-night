@@ -68,9 +68,13 @@ export default function App() {
         })
         .subscribe();
     
+    // Listen for History (FIXED: Filter by couple ID)
+    const historyChannel = supabase.channel('history_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'history', filter: `couple_id=eq.${coupleId}` }, () => fetchHistory(coupleId))
+        .subscribe();
+
     supabase.channel('deck_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards' }, () => fetchCustomDeck()).subscribe();
     supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items' }, () => fetchCustomItems()).subscribe();
-    supabase.channel('history_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, () => fetchHistory()).subscribe();
     supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
     
     return () => supabase.removeAllChannels();
@@ -108,12 +112,25 @@ export default function App() {
     setSharedState(coupleState);
     setPartnerProfile(pProfile);
 
-    await Promise.all([fetchHistory(), fetchVouchers(), fetchCustomItems(), fetchCustomDeck()]);
+    // FIXED: Pass couple ID to fetchHistory
+    await Promise.all([
+        myProfile.couple_id ? fetchHistory(myProfile.couple_id) : Promise.resolve(),
+        fetchVouchers(), 
+        fetchCustomItems(), 
+        fetchCustomDeck()
+    ]);
     setLoading(false);
   }
 
   // --- ACTIONS ---
-  const fetchHistory = async () => { const { data } = await supabase.from('history').select('*').order('created_at', { ascending: false }); setHistory(data || []); };
+  
+  // FIXED: Accepts coupleId to filter correctly
+  const fetchHistory = async (targetCoupleId) => { 
+    if (!targetCoupleId) return;
+    const { data } = await supabase.from('history').select('*').eq('couple_id', targetCoupleId).order('created_at', { ascending: false }); 
+    setHistory(data || []); 
+  };
+
   const fetchVouchers = async () => { const { data } = await supabase.from('vouchers').select('*').eq('redeemed', false); setVouchers(data || []); };
   const fetchCustomItems = async () => { const { data } = await supabase.from('custom_store_items').select('*'); setCustomStoreItems(data || []); };
   const fetchCustomDeck = async () => { const { data } = await supabase.from('custom_deck_cards').select('*'); setCustomDeckCards(data || []); };
@@ -234,9 +251,59 @@ export default function App() {
   };
 
   const handleFinalSelection = async (finalCard) => {
+     // 1. Instantly go to Dashboard
      setActiveTab('dashboard');
      setSharedState(prev => ({ ...prev, sync_stage: 'active', sync_pool: [finalCard] }));
-     await supabase.from('history').insert([{ title: finalCard.title, intensity: finalCard.intensity, created_at: new Date().toISOString() }]);
+     
+     // --- TOKEN REWARD LOGIC ---
+     const getInt = (val) => {
+         if (val === 'high' || val === 3) return 3;
+         if (val === 'medium' || val === 2) return 2;
+         return 1;
+     };
+
+     const leadReq = getInt(sharedState.sync_data_lead?.intensity);
+     const partnerReq = getInt(sharedState.sync_data_partner?.intensity);
+     const finalInt = getInt(finalCard.intensity);
+
+     // Did the LEAD compromise? (Asked for higher than result)
+     if (leadReq > finalInt) {
+         const leadId = profile.isUserLead ? profile.id : partnerProfile?.id;
+         if (leadId) {
+             const currentTokens = (profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0;
+             // Update DB
+             await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', leadId);
+             // Update Local Screen if it's ME
+             if (profile.isUserLead) {
+                 setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
+             }
+         }
+     }
+
+     // Did the PARTNER compromise?
+     if (partnerReq > finalInt) {
+         const partnerId = !profile.isUserLead ? profile.id : partnerProfile?.id;
+         if (partnerId) {
+             const currentTokens = (!profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0;
+             // Update DB
+             await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', partnerId);
+             // Update Local Screen if it's ME
+             if (!profile.isUserLead) {
+                 setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
+             }
+         }
+     }
+     // ---------------------------
+
+     // 2. Save History
+     await supabase.from('history').insert([{ 
+         title: finalCard.title, 
+         intensity: finalCard.intensity, 
+         couple_id: profile.couple_id,
+         created_at: new Date().toISOString() 
+     }]);
+
+     // 3. Update Couple State
      await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
   };
   
