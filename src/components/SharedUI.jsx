@@ -1,9 +1,12 @@
 import React from 'react';
 
-export const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled }) => {
+// Now accepts `theme` prop to style the primary button dynamically
+export const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled, theme }) => {
   const baseStyle = "w-full py-4 px-6 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+  
+  // Use theme classes if available
   const variants = {
-    primary: "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-900/20 border border-violet-500/50",
+    primary: theme ? `${theme.solid} ${theme.glow} text-white border ${theme.borderStrong}` : "bg-zinc-800 text-white",
     secondary: "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700",
     accent: "bg-emerald-600 text-white shadow-lg border border-emerald-500/50",
     ghost: "bg-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/30"

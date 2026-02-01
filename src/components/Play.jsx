@@ -16,7 +16,7 @@ const MiniBattery = ({ level, label }) => {
   );
 };
 
-export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSelection, onFinalSelection, onResetSync }) {
+export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSelection, onFinalSelection, onResetSync, theme }) {
   const [localStage, setLocalStage] = useState('mode_selection'); 
   const [userBattery, setUserBattery] = useState(0); 
   const [shortlist, setShortlist] = useState([]);
@@ -24,8 +24,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   const isLead = profile.isUserLead;
   const myData = isLead ? sharedState?.sync_data_lead : sharedState?.sync_data_partner;
 
-  // --- FIX 1: AUTO-RESET WATCHER ---
-  // If the database says "IDLE", force the screen to "MODE SELECTION" instantly.
   useEffect(() => {
     if (sharedState?.sync_stage === 'idle') {
         setLocalStage('mode_selection');
@@ -34,7 +32,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     }
   }, [sharedState?.sync_stage]);
 
-  // --- FIX 2: AUTO-JUMP to Mood if data missing ---
   useEffect(() => {
     if (sharedState?.sync_stage === 'input' && !myData) {
         setLocalStage('mood');
@@ -46,7 +43,6 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   };
 
   const handleIntensitySelect = (level) => {
-    // IMMEDIATE EXIT
     const finalBat = userBattery === 0 ? 1 : userBattery;
     onSyncInput({ battery: finalBat, intensity: level });
   };
@@ -63,19 +59,19 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
                <p className="text-zinc-400 mt-2 text-sm leading-relaxed">You have completed a connection.</p>
            </div>
            
-           <Button variant="primary" onClick={onResetSync} className="w-full py-4 uppercase font-black tracking-widest text-xs">
+           <button onClick={onResetSync} className={`w-full py-4 uppercase font-black tracking-widest text-xs rounded-xl text-white ${theme.solid} ${theme.glow}`}>
                Start New Connection
-           </Button>
+           </button>
         </div>
      );
   }
 
-  // --- WAITING SCREEN (Only if I have submitted, waiting for partner) ---
+  // --- WAITING SCREEN ---
   if (myData && sharedState?.sync_stage === 'input') {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in px-6">
         <div className="bg-zinc-900 p-8 rounded-full border border-zinc-800 relative">
-           <RefreshCw size={40} className="text-violet-500 animate-spin" />
+           <RefreshCw size={40} className={`${theme.text} animate-spin`} />
         </div>
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight">Vibe Locked In</h2>
@@ -86,23 +82,21 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-// --- MODE SELECTION ---
+  // --- MODE SELECTION ---
   if (sharedState?.sync_stage === 'idle' && localStage === 'mode_selection') {
     return (
       <div className="animate-in slide-in-from-bottom-4 duration-500 h-full flex flex-col justify-center px-6 space-y-6">
         <div className="text-center mb-2">
-            <Sparkles size={48} className="mx-auto text-violet-500 mb-4" />
+            <Sparkles size={48} className={`mx-auto ${theme.text} mb-4`} />
             <h2 className="text-3xl font-light text-white">Connection Mode</h2>
         </div>
 
-        {/* --- ADDED: ROLE INDICATOR --- */}
         <div className={`flex items-center justify-center gap-2 py-2 px-4 rounded-full border ${profile.isUserLead ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-blue-500/10 border-blue-500/30 text-blue-400'}`}>
             {profile.isUserLead ? <Crown size={14} /> : <Shield size={14} />}
             <span className="text-[10px] font-black uppercase tracking-widest">
                 {profile.isUserLead ? "You are In Charge" : "Partner is In Charge"}
             </span>
         </div>
-        {/* ----------------------------- */}
 
         <button onClick={() => handleModeSelect('standard')} className="w-full p-6 rounded-3xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 transition-all text-left group active:scale-95">
           <div className="flex justify-between items-center mb-2"><h3 className="text-xl font-bold text-white">Standard Sync</h3><ArrowRight className="text-zinc-600 group-hover:text-white" /></div>
@@ -136,7 +130,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
           <div className="space-y-4">
             <div className="flex items-center justify-between px-2">
                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Current Capacity</h4>
-                <span className={`text-[10px] font-black uppercase tracking-widest ${userBattery === 0 ? 'text-zinc-600' : 'text-violet-400'}`}>{userBattery === 0 ? "Select Level" : ["Low", "Medium", "High"][userBattery-1]}</span>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${userBattery === 0 ? 'text-zinc-600' : theme.textLight}`}>{userBattery === 0 ? "Select Level" : ["Low", "Medium", "High"][userBattery-1]}</span>
             </div>
             <div className="relative group mx-auto w-full max-w-[180px]">
                 <div className="h-20 border-4 border-zinc-800 rounded-2xl p-1 flex gap-1.5 relative bg-zinc-950/50">
@@ -204,7 +198,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
       <div className="animate-in slide-in-from-right-4 pb-24 px-4 pt-2">
         <div className="bg-zinc-900/60 border border-zinc-800 p-6 mb-8 rounded-[2rem] shadow-xl flex justify-between items-end">
             <div className="flex flex-col items-center gap-2"><MiniBattery level={sharedState.sync_data_lead.battery} label="You" /><div className="flex items-center gap-1 bg-zinc-900/50 px-2 py-1 rounded-md border border-zinc-800">{getIntensityIcon(sharedState.sync_data_lead.intensity)} <span className="text-[9px] font-bold text-zinc-500 uppercase">{sharedState.sync_data_lead.intensity}</span></div></div>
-            <div className="flex flex-col items-center gap-1 mb-2"><div className="flex items-center gap-1 mb-1"><Crown size={12} className="text-amber-500" /> <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">In Charge</span></div><div className="px-3 py-1 bg-violet-500/10 border border-violet-500/30 rounded-full"><span className="text-xs font-black uppercase text-violet-400 tracking-widest">{targetIntensity} Match</span></div></div>
+            <div className="flex flex-col items-center gap-1 mb-2"><div className="flex items-center gap-1 mb-1"><Crown size={12} className="text-amber-500" /> <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">In Charge</span></div><div className={`px-3 py-1 ${theme.bgSoft} border ${theme.border} rounded-full`}><span className={`text-xs font-black uppercase ${theme.textLight} tracking-widest`}>{targetIntensity} Match</span></div></div>
             <div className="flex flex-col items-center gap-2"><MiniBattery level={sharedState.sync_data_partner?.battery || 1} label="Partner" /><div className="flex items-center gap-1 bg-zinc-900/50 px-2 py-1 rounded-md border border-zinc-800">{getIntensityIcon(sharedState.sync_data_partner?.intensity || 'low')} <span className="text-[9px] font-bold text-zinc-500 uppercase">{sharedState.sync_data_partner?.intensity}</span></div></div>
         </div>
 
@@ -212,8 +206,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
             {options.map(card => {
               const isPicked = shortlist.includes(card.id);
               return (
-                <button key={card.id} onClick={() => toggleShortlist(card.id)} disabled={!isPicked && shortlist.length >= 3} className={`w-full p-5 rounded-3xl border text-left transition-all relative ${isPicked ? 'bg-violet-900/20 border-violet-500' : 'bg-zinc-900/40 border-zinc-800 opacity-60 grayscale'}`}>
-                    <div className="flex justify-between items-center mb-1"><h4 className={`font-bold ${isPicked ? 'text-white' : 'text-zinc-400'}`}>{card.title}</h4>{isPicked && <CheckCircle2 size={16} className="text-violet-400" />}</div>
+                <button key={card.id} onClick={() => toggleShortlist(card.id)} disabled={!isPicked && shortlist.length >= 3} className={`w-full p-5 rounded-3xl border text-left transition-all relative ${isPicked ? `${theme.bgSoft} ${theme.borderStrong}` : 'bg-zinc-900/40 border-zinc-800 opacity-60 grayscale'}`}>
+                    <div className="flex justify-between items-center mb-1"><h4 className={`font-bold ${isPicked ? 'text-white' : 'text-zinc-400'}`}>{card.title}</h4>{isPicked && <CheckCircle2 size={16} className={`${theme.text}`} />}</div>
                     <p className="text-xs text-zinc-500 leading-relaxed">{card.desc}</p>
                 </button>
               );
@@ -222,9 +216,9 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
         
         {shortlist.length === 3 && ( 
             <div className="fixed bottom-28 left-6 right-6 z-[100]">
-                <Button className="w-full shadow-2xl shadow-violet-900/50 py-4 text-lg" variant="accent" onClick={() => onLeadSelection(deck.filter(c => shortlist.includes(c.id)))}>
+                <button className={`w-full shadow-2xl ${theme.glow} py-4 text-lg rounded-xl font-bold text-white ${theme.solid}`} onClick={() => onLeadSelection(deck.filter(c => shortlist.includes(c.id)))}>
                     Send Shortlist
-                </Button>
+                </button>
             </div> 
         )}
       </div>
@@ -248,7 +242,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     if (pool.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-pulse">
-                <RefreshCw size={32} className="text-violet-500 animate-spin mb-4" />
+                <RefreshCw size={32} className={`${theme.text} animate-spin mb-4`} />
                 <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Loading Selections...</p>
             </div>
         );
@@ -278,7 +272,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // FALLBACK (PREVENTS BLANK SCREEN)
+  // FALLBACK
   return (
       <div className="flex flex-col items-center justify-center h-full text-zinc-500">
           <RefreshCw size={24} className="animate-spin mb-4 text-zinc-700" />

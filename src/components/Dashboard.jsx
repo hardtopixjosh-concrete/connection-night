@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight, HelpCircle, X, Coins, Zap, User } from 'lucide-react';
+import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight, HelpCircle, X, Coins, Zap, User, AlertTriangle } from 'lucide-react';
 import { Card } from './SharedUI';
 import { DAILY_QUESTS, MICRO_CONNECTIONS } from '../data/gameData';
 
@@ -17,7 +17,8 @@ export default function Dashboard({
   onOliveBranchClick, 
   sessionUserId, 
   syncStage, 
-  onNavigate 
+  onNavigate,
+  theme // NOW RECEIVES FULL OBJECT
 }) {
   const [showHelp, setShowHelp] = useState(false);
 
@@ -25,7 +26,6 @@ export default function Dashboard({
   const isLeadPicking = syncStage === 'lead_picking';
   const isPartnerPicking = syncStage === 'partner_picking';
 
-  // --- DAILY DROP LOGIC ---
   const [dailyDrop, setDailyDrop] = useState({ label: 'Connection', quest: 'Loading daily quest...' });
 
   useEffect(() => {
@@ -36,18 +36,13 @@ export default function Dashboard({
     const todayStr = new Date().toDateString();
     let hash = 0;
     for (let i = 0; i < todayStr.length; i++) hash = todayStr.charCodeAt(i) + ((hash << 5) - hash);
-    
     const selectedType = availableTypes[Math.abs(hash) % availableTypes.length];
 
     if (selectedType && DAILY_QUESTS[selectedType.id]) {
         const rawQuest = DAILY_QUESTS[selectedType.id];
         let finalQuestText = "Spend quality time together.";
-
-        if (Array.isArray(rawQuest)) {
-            finalQuestText = rawQuest[Math.abs(hash) % rawQuest.length];
-        } else if (typeof rawQuest === 'string') {
-            finalQuestText = rawQuest;
-        }
+        if (Array.isArray(rawQuest)) finalQuestText = rawQuest[Math.abs(hash) % rawQuest.length];
+        else if (typeof rawQuest === 'string') finalQuestText = rawQuest;
         setDailyDrop({ label: selectedType.label, quest: finalQuestText });
     }
   }, [partnerProfile]); 
@@ -66,15 +61,9 @@ export default function Dashboard({
   const [visualState, setVisualState] = useState('IDLE'); 
   useEffect(() => {
     if (oliveBranchAcceptedAt) {
-      const acceptedTime = new Date(oliveBranchAcceptedAt).getTime();
-      const now = Date.now();
-      const msSinceAccept = now - acceptedTime;
-      const msInDay = 24 * 60 * 60 * 1000;
-      if (msSinceAccept < msInDay) setVisualState('GREEN');
+      if ((Date.now() - new Date(oliveBranchAcceptedAt).getTime()) < 24 * 60 * 60 * 1000) setVisualState('GREEN');
       else setVisualState('IDLE');
-    } else {
-      setVisualState('IDLE');
-    }
+    } else { setVisualState('IDLE'); }
   }, [oliveBranchAcceptedAt, oliveBranchActive]);
 
   const isSender = oliveBranchSender === sessionUserId;
@@ -88,7 +77,6 @@ export default function Dashboard({
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-700">
       
-      {/* --- CUSTOM CSS FOR LIVE FIRE EFFECT --- */}
       <style>{`
         @keyframes fire-pulse {
           0% { box-shadow: 0 0 10px #f97316, 0 0 20px #dc2626, inset 0 0 5px #f59e0b; border-color: #f97316; }
@@ -97,27 +85,19 @@ export default function Dashboard({
           75% { box-shadow: 0 0 15px #f97316, 0 0 30px #ef4444, inset 0 0 10px #f59e0b; border-color: #fb923c; }
           100% { box-shadow: 0 0 10px #f97316, 0 0 20px #dc2626, inset 0 0 5px #f59e0b; border-color: #f97316; }
         }
-        .live-fire {
-          animation: fire-pulse 1.5s infinite alternate ease-in-out;
-        }
+        .live-fire { animation: fire-pulse 1.5s infinite alternate ease-in-out; }
       `}</style>
 
-      <div className="flex items-center justify-between mb-4 pt-2">
+      <div className="flex items-start justify-between mb-4 pt-2">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Good Evening, {profile?.name || 'User'}.</h1>
-          
           <div className="flex items-center gap-2 mb-1">
              {profile?.couple_id ? (
-                <span className="text-zinc-500 text-xs font-medium flex items-center gap-1">
-                   <Heart size={10} className="text-rose-500 fill-rose-500" /> Linked with <span className="text-zinc-300">{partnerProfile?.name || 'Partner'}</span>
-                </span>
+                <span className="text-zinc-500 text-xs font-medium flex items-center gap-1"><Heart size={10} className="text-rose-500 fill-rose-500" /> Linked with <span className="text-zinc-300">{partnerProfile?.name || 'Partner'}</span></span>
              ) : (
-                <span className="text-zinc-500 text-xs font-medium flex items-center gap-1">
-                   <User size={10} /> No partner linked
-                </span>
+                <span className="text-zinc-500 text-xs font-medium flex items-center gap-1"><User size={10} /> No partner linked</span>
              )}
           </div>
-
           <div className="mt-2 flex items-center gap-2">
             {!syncedConnection ? (
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse">System: Not Synced</span>
@@ -126,27 +106,25 @@ export default function Dashboard({
             )}
           </div>
         </div>
-        <button onClick={onOliveBranchClick} className={`p-4 rounded-full border transition-all duration-300 ${flagClass}`}><Flag size={22} fill={iconFill} /></button>
+        <div className="flex flex-col items-center gap-1">
+            <button onClick={onOliveBranchClick} className={`p-4 rounded-full border transition-all duration-300 ${flagClass}`}><Flag size={22} fill={iconFill} /></button>
+            <span className="text-[9px] font-black uppercase tracking-wider text-zinc-600">Reconnect</span>
+        </div>
       </div>
 
       {!profile?.couple_id && (
-          <div onClick={() => onNavigate('setup')} className="bg-violet-900/20 border border-violet-500/30 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-violet-900/30 transition-all">
-              <div className="h-10 w-10 bg-violet-600 rounded-full flex items-center justify-center shrink-0">
-                  <Sparkles size={20} className="text-white" />
-              </div>
-              <div>
-                  <h4 className="font-bold text-white text-sm">Connect Partner</h4>
-                  <p className="text-zinc-400 text-xs">Tap to go to Config and link accounts.</p>
-              </div>
+          <div onClick={() => onNavigate('setup')} className={`${theme.bgSoft} border ${theme.border} p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-zinc-900 transition-all`}>
+              <div className={`h-10 w-10 ${theme.solid} rounded-full flex items-center justify-center shrink-0`}><Sparkles size={20} className="text-white" /></div>
+              <div><h4 className="font-bold text-white text-sm">Connect Partner</h4><p className="text-zinc-400 text-xs">Tap to go to Config and link accounts.</p></div>
           </div>
       )}
 
       {isWaitingForPartnerInput && (
         <div className="animate-in slide-in-from-top-4 cursor-pointer active:scale-95 transition-transform" onClick={() => onNavigate('play')}>
-           <div className="bg-violet-900/20 border border-violet-500/30 p-4 rounded-xl flex items-center gap-4 shadow-lg shadow-violet-900/20 hover:bg-violet-900/30 transition-colors group">
-              <div className="bg-violet-500/20 p-2 rounded-full"><Loader2 size={20} className="text-violet-400 animate-spin" /></div>
-              <div className="flex-1"><p className="text-xs font-bold text-violet-200 uppercase tracking-wider">Sync in Progress</p><p className="text-xs text-violet-400 mt-1">Waiting for partner's input...</p></div>
-              <ArrowRight size={16} className="text-violet-500 opacity-50 group-hover:opacity-100 transition-opacity" />
+           <div className={`${theme.bgSoft} border ${theme.border} p-4 rounded-xl flex items-center gap-4 shadow-lg ${theme.glow} hover:bg-zinc-900 transition-colors group`}>
+              <div className={`bg-black/20 p-2 rounded-full`}><Loader2 size={20} className={`${theme.loader} animate-spin`} /></div>
+              <div className="flex-1"><p className={`text-xs font-bold ${theme.textLight} uppercase tracking-wider`}>Sync in Progress</p><p className={`text-xs ${theme.loader} mt-1`}>Waiting for partner's input...</p></div>
+              <ArrowRight size={16} className={`${theme.text} opacity-50 group-hover:opacity-100 transition-opacity`} />
            </div>
         </div>
       )}
@@ -175,10 +153,7 @@ export default function Dashboard({
         <div className="animate-in slide-in-from-top-2 duration-500">
           <button onClick={onOliveBranchClick} className="w-full bg-amber-500/10 border border-amber-500/50 rounded-xl p-4 flex items-center gap-4 text-left hover:bg-amber-500/20 transition-all">
             <div className="bg-amber-500 p-2 rounded-lg text-black animate-pulse"><Flag size={20} fill="currentColor" /></div>
-            <div className="flex-1">
-              <p className="text-xs font-bold text-amber-200 uppercase tracking-wider">Olive Branch Extended</p>
-              <p className="text-xs text-amber-500/80 mt-1">{profile.partnerName} wants to reconnect. Tap to Accept.</p>
-            </div>
+            <div className="flex-1"><p className="text-xs font-bold text-amber-200 uppercase tracking-wider">Olive Branch Extended</p><p className="text-xs text-amber-500/80 mt-1">{profile.partnerName} wants to reconnect. Tap to Accept.</p></div>
           </button>
         </div>
       )}
@@ -194,7 +169,6 @@ export default function Dashboard({
 
       {syncedConnection && (
         <div className="animate-in slide-in-from-right-4 duration-500">
-          {/* --- THE LIVE FIRE CARD --- */}
           <div className="relative rounded-3xl overflow-hidden live-fire border-2 bg-zinc-900">
              <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-red-950/40 z-0"></div>
              <div className="relative z-10 p-5">
@@ -216,28 +190,24 @@ export default function Dashboard({
               <div className={`${activeStyle.iconBg} rounded-full p-3 text-white ${activeStyle.shadow} animate-pulse`}>
                 {partnerSignal === 'horny' ? <Flame size={24} fill="currentColor" /> : partnerSignal === 'needy' ? <Moon size={24} fill="currentColor" /> : partnerSignal === 'talkative' ? <MessageCircle size={24} fill="currentColor" /> : <Heart size={24} fill="currentColor" />}
               </div>
-              <div className="flex-1">
-                <h3 className="text-white font-bold text-lg uppercase tracking-wide">Partner Signal</h3>
-                <p className={`${activeStyle.text} text-sm mt-1 leading-relaxed`}>
-                  {profile.partnerName} is feeling <strong className={`${activeStyle.strong} uppercase`}>{partnerSignal}</strong>.
-                </p>
-              </div>
+              <div className="flex-1"><h3 className="text-white font-bold text-lg uppercase tracking-wide">Partner Signal</h3><p className={`${activeStyle.text} text-sm mt-1 leading-relaxed`}>{profile.partnerName} is feeling <strong className={`${activeStyle.strong} uppercase`}>{partnerSignal}</strong>.</p></div>
             </div>
           </Card>
         </div>
       )}
 
-      <Card className="border-violet-500/20 shadow-violet-900/10 bg-gradient-to-tr from-zinc-900 via-zinc-900 to-violet-900/5">
+      {/* --- DYNAMIC DAILY DROP --- */}
+      <Card className={`${theme.border} ${theme.glow} bg-gradient-to-tr from-zinc-900 via-zinc-900 to-black`}>
         <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2"><Sparkles size={16} className="text-violet-400" /><span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-400">Daily Drop</span></div>
+          <div className="flex items-center gap-2"><Sparkles size={16} className={`${theme.textLight}`} /><span className={`text-[10px] font-black uppercase tracking-[0.2em] ${theme.textLight}`}>Daily Drop</span></div>
         </div>
-        <h2 className="text-xl font-bold text-white mb-2 leading-tight"><span className="text-violet-400 font-black uppercase tracking-tighter mr-2">{focusLabel}:</span>{quest}</h2>
+        <h2 className="text-xl font-bold text-white mb-2 leading-tight"><span className={`${theme.textLight} font-black uppercase tracking-tighter mr-2`}>{focusLabel}:</span>{quest}</h2>
       </Card>
 
       <div>
         <div className="flex justify-between items-center mb-4 px-1">
           <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.15em]">Send Your Vibe</h3>
-          {mySignal && (<span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-400 drop-shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse">Transmitting...</span>)}
+          {mySignal && (<span className={`text-[10px] font-black uppercase tracking-[0.2em] ${theme.textLight} animate-pulse`}>Transmitting...</span>)}
         </div>
         <div className="grid grid-cols-4 gap-2">
           {[{ id: 'horny', icon: Flame, label: 'Horny', color: 'bg-orange-600' }, { id: 'needy', icon: Moon, label: 'Needy', color: 'bg-indigo-500' }, { id: 'talkative', icon: MessageCircle, label: 'Talkative', color: 'bg-blue-500' }, { id: 'touch', icon: Heart, label: 'Touch', color: 'bg-rose-500' }].map(signal => (
@@ -249,58 +219,35 @@ export default function Dashboard({
         </div>
       </div>
 
-      <div className="flex justify-center mt-8 pb-4">
-        <button
-            onClick={() => setShowHelp(true)}
-            className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-violet-400 transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border border-zinc-800 hover:border-violet-500/30"
-        >
-            <HelpCircle size={16} />
-            <span>How to Play</span>
+      <div className="flex flex-col items-center mt-8 pb-4 gap-4">
+        <button onClick={() => setShowHelp(true)} className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-white transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border border-zinc-800 hover:border-zinc-500/30">
+            <HelpCircle size={16} /> <span>How to Play</span>
         </button>
+
+        {(!profile?.partner_focus_areas || profile.partner_focus_areas.length === 0) && (
+            <div onClick={() => onNavigate('setup')} className="flex items-center gap-2 cursor-pointer animate-pulse">
+                <AlertTriangle size={12} className="text-amber-500" />
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest hover:text-white transition-colors">Update Love Preferences in Config</span>
+            </div>
+        )}
       </div>
 
       {showHelp && (
         <div className="fixed inset-0 z-[60] bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl shadow-2xl max-h-[85vh] overflow-y-auto relative ring-1 ring-white/10">
                 <div className="sticky top-0 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 p-5 flex justify-between items-center z-10">
-                    <h2 className="text-white font-bold uppercase tracking-widest text-sm flex items-center gap-2"><Crown size={16} className="text-violet-500" /> Game Guide</h2>
+                    <h2 className="text-white font-bold uppercase tracking-widest text-sm flex items-center gap-2"><Crown size={16} className={`${theme.text}`} /> Game Guide</h2>
                     <button onClick={() => setShowHelp(false)} className="bg-zinc-800 p-2 rounded-full text-zinc-400 hover:text-white transition-colors"><X size={16} /></button>
                 </div>
-                
                 <div className="p-6 space-y-8">
-                    <div className="flex gap-4">
-                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-rose-500 h-fit"><Flag size={20} fill="currentColor" /></div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm">The White Flag</h3>
-                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Located in the top corner. Tap this when you feel distant or need to resolve conflict. It's a silent signal that says "I want to fix this."</p>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-4">
-                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-violet-500 h-fit"><Sparkles size={20} fill="currentColor" /></div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm">Connection Sync</h3>
-                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Tap the big <span className="text-white font-bold">Play Button</span> (bottom center) to start. You both rate your battery levels, and the app suggests activities that match your combined energy.</p>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-4">
-                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-amber-500 h-fit"><Coins size={20} fill="currentColor" /></div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm">Earning Tokens</h3>
-                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Fairness is key. During a Sync, if you have to <span className="text-white font-bold">compromise</span> (you wanted High intensity but agreed to Low), you earn 1 Token. Use tokens to buy rewards in the Store.</p>
-                        </div>
-                    </div>
-
-                     <div className="flex gap-4">
-                        <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-emerald-500 h-fit"><Calendar size={20} /></div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm">The Daily Drop</h3>
-                            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">Every day, the dashboard shows a "Daily Quest" tailored to your partner's love language. It's a small, easy way to show you care.</p>
-                        </div>
-                    </div>
+                    <div className="flex gap-4"><div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-rose-500 h-fit"><Flag size={20} fill="currentColor" /></div><div><h3 className="text-white font-bold text-sm">The White Flag</h3><p className="text-zinc-400 text-xs mt-1 leading-relaxed">Tap this when you feel distant or need to resolve conflict. It's a silent signal that says "I want to fix this."</p></div></div>
+                    <div className="flex gap-4"><div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-violet-500 h-fit"><Sparkles size={20} fill="currentColor" /></div><div><h3 className="text-white font-bold text-sm">Connection Sync</h3><p className="text-zinc-400 text-xs mt-1 leading-relaxed">Tap the big <span className="text-white font-bold">Play Button</span> to start. Rate your battery, and the app suggests matching activities.</p></div></div>
+                    
+                    {/* RESTORED TOKEN SECTION */}
+                    <div className="flex gap-4"><div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-amber-500 h-fit"><Coins size={20} fill="currentColor" /></div><div><h3 className="text-white font-bold text-sm">Earning Tokens</h3><p className="text-zinc-400 text-xs mt-1 leading-relaxed">Fairness is key. If you <span className="text-white font-bold">compromise</span> (you wanted High intensity but agreed to Low), you earn 1 Token.</p></div></div>
+                    
+                    <div className="flex gap-4"><div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-emerald-500 h-fit"><Calendar size={20} /></div><div><h3 className="text-white font-bold text-sm">The Daily Drop</h3><p className="text-zinc-400 text-xs mt-1 leading-relaxed">Every day, you get a "Daily Quest" tailored to your partner's love language.</p></div></div>
                 </div>
-                
                 <div className="p-5 border-t border-zinc-800 bg-zinc-900/50">
                     <button onClick={() => setShowHelp(false)} className="w-full py-3 bg-white text-zinc-950 hover:bg-zinc-200 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">Got it</button>
                 </div>

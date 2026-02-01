@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-// FIX: Added 'Trash2' to the imports below
-import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle } from 'lucide-react';
+import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, Bell, Palette } from 'lucide-react';
 import { Card, Button } from './SharedUI';
 import { supabase } from '../supabase';
+import { THEMES } from '../data/themes'; // Import THEMES
 
 const LOVE_STYLES = [
   { id: 'compliments', label: 'Compliments', icon: '💬' },
@@ -21,19 +21,21 @@ const LOVE_STYLES = [
 
 export default function Config({ 
   profile, 
-  partnerProfile,
-  sharedState,
+  partnerProfile, 
+  sharedState, 
   onUpdateProfile, 
   onLogout, 
-  onResetEconomy,
-  activeDeck,
-  onAddDeckCard,
-  onDeleteDeckCard,
-  onUpdateVault,
-  onCreateLink,
-  onJoinLink,
-  onUnlink,
-  onRefresh
+  onResetEconomy, 
+  activeDeck, 
+  onAddDeckCard, 
+  onDeleteDeckCard, 
+  onUpdateVault, 
+  onCreateLink, 
+  onJoinLink, 
+  onUnlink, 
+  onRefresh, 
+  theme, // NOW RECEIVES FULL OBJECT
+  onUpdateTheme 
 }) {
   const [name, setName] = useState('');
   const [focusAreas, setFocusAreas] = useState([]);
@@ -122,12 +124,42 @@ export default function Config({
           </button>
       </div>
 
-      {/* --- IDENTITY & CONNECTION --- */}
+      <Card title="App Appearance">
+          <div className="grid grid-cols-4 gap-2">
+              {Object.values(THEMES).map(t => (
+                  <button 
+                    key={t.id}
+                    onClick={() => onUpdateTheme(t.id)}
+                    className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${theme.id === t.id ? `${t.bgSoft} ${t.borderStrong} text-white` : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
+                  >
+                      <div className={`h-6 w-6 rounded-full ${t.solid} shadow-lg`} />
+                      <span className="text-[10px] font-bold uppercase">{t.label}</span>
+                  </button>
+              ))}
+          </div>
+      </Card>
+
       <Card title="Identity & Connection">
         <div className="space-y-6">
+          
+          <div>
+            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 block">Alerts</label>
+            <button 
+                onClick={() => {
+                    Notification.requestPermission().then(perm => {
+                        if (perm === 'granted') alert("Notifications Enabled!");
+                        else alert("Notifications blocked. Check browser settings.");
+                    });
+                }}
+                className="w-full py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 text-xs font-bold hover:bg-zinc-800 hover:text-white transition-all flex items-center justify-center gap-2"
+            >
+                <Bell size={16} /> Enable Browser Notifications
+            </button>
+          </div>
+
           <div>
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Your Name</label>
-            <input className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white mt-1 focus:border-violet-500 focus:outline-none" value={name} onChange={e => setName(e.target.value)} />
+            <input className={`w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white mt-1 focus:${theme.borderStrong} focus:outline-none`} value={name} onChange={e => setName(e.target.value)} />
           </div>
 
           <div>
@@ -159,7 +191,7 @@ export default function Config({
                 <div className="space-y-3">
                     {!linkMode ? (
                         <div className="flex gap-2">
-                            <button onClick={() => {setLinkMode('create'); handleGenerate();}} className="flex-1 py-3 bg-violet-600 rounded-xl text-white font-bold text-xs hover:bg-violet-500 transition-colors">I'm Lead (Get Code)</button>
+                            <button onClick={() => {setLinkMode('create'); handleGenerate();}} className={`flex-1 py-3 ${theme.solid} rounded-xl text-white font-bold text-xs ${theme.hover} transition-colors`}>I'm Lead (Get Code)</button>
                             <button onClick={() => setLinkMode('join')} className="flex-1 py-3 bg-zinc-800 rounded-xl text-white font-bold text-xs hover:bg-zinc-700 transition-colors">Join Partner</button>
                         </div>
                     ) : (
@@ -167,7 +199,7 @@ export default function Config({
                             <div className="flex justify-between items-center mb-3"><span className="text-white font-bold text-xs uppercase tracking-wide">{linkMode === 'create' ? "Generating..." : "Enter Code"}</span><button onClick={() => {setLinkMode(null); setLinkError(null);}} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button></div>
                             {linkMode === 'join' && (
                                 <div className="flex gap-2">
-                                    <input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="CODE" className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-center text-white font-mono uppercase text-sm outline-none focus:border-violet-500" />
+                                    <input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="CODE" className={`flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-center text-white font-mono uppercase text-sm outline-none focus:${theme.borderStrong}`} />
                                     <button onClick={handleJoin} disabled={loading || !joinCode} className="px-4 bg-emerald-600 rounded-lg text-white font-bold text-xs">{loading ? "..." : "Link"}</button>
                                 </div>
                             )}
@@ -185,7 +217,7 @@ export default function Config({
           {LOVE_STYLES.map(item => {
             const isSelected = focusAreas.includes(item.id);
             return (
-                <button key={item.id} onClick={() => toggleFocus(item.id)} className={`p-2 rounded-xl border flex flex-col items-center gap-1 transition-all ${isSelected ? 'bg-violet-900/20 border-violet-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}>
+                <button key={item.id} onClick={() => toggleFocus(item.id)} className={`p-2 rounded-xl border flex flex-col items-center gap-1 transition-all ${isSelected ? `${theme.bgSoft} ${theme.borderStrong} text-white` : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}>
                     <span className="text-lg">{item.icon}</span>
                     <span className="text-[9px] font-bold uppercase whitespace-nowrap">{item.label}</span>
                 </button>
@@ -194,16 +226,14 @@ export default function Config({
         </div>
       </Card>
 
-      <Button variant="primary" onClick={handleSave} className="w-full py-4 flex items-center justify-center gap-2" disabled={loading}>
+      <Button variant="primary" onClick={handleSave} className="w-full py-4 flex items-center justify-center gap-2" disabled={loading} theme={theme}>
         {loading ? <RefreshCw className="animate-spin" size={18} /> : (saved ? <CheckCircle2 size={18} /> : <Save size={18} />)}
         {saved ? 'Changes Saved' : 'Save Changes'}
       </Button>
 
       <div className="border-t border-zinc-800 my-8" />
 
-      {/* --- DECK MANAGER --- */}
-      <div>
-        <h2 className="text-xl font-bold text-white mb-4">Manage Activity Deck</h2>
+      <Card title={`Manage Deck (${deckTab})`}>
         <div className="flex bg-zinc-900 rounded-xl p-1 border border-zinc-800 mb-4">
             {['low', 'medium', 'high'].map(i => (
                 <button key={i} onClick={() => setDeckTab(i)} className={`flex-1 py-3 rounded-lg flex flex-col items-center gap-1 transition-all ${deckTab === i ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
@@ -213,10 +243,10 @@ export default function Config({
             ))}
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Add New {deckTab} Card</h3>
+            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Add New Card</h3>
             <div className="space-y-2">
-                <input className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white text-xs" placeholder="Title (e.g. Walk in Park)" value={newCardTitle} onChange={e => setNewCardTitle(e.target.value)} />
-                <input className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white text-xs" placeholder="Description (Optional)" value={newCardDesc} onChange={e => setNewCardDesc(e.target.value)} />
+                <input className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white text-xs" placeholder="Title" value={newCardTitle} onChange={e => setNewCardTitle(e.target.value)} />
+                <input className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white text-xs" placeholder="Description" value={newCardDesc} onChange={e => setNewCardDesc(e.target.value)} />
                 <Button variant="accent" onClick={handleAddCard} className="w-full py-2 text-xs">Add to Deck</Button>
             </div>
         </div>
@@ -228,13 +258,12 @@ export default function Config({
                 </div>
             ))}
         </div>
-      </div>
+      </Card>
 
-      <div className="border-t border-zinc-800 my-8" />
       <div className="space-y-4">
         <h3 className="text-xs font-black text-rose-500 uppercase tracking-widest">System</h3>
-        <button onClick={() => { if(window.confirm("Reset tokens to 0 and clear the vault?")) onResetEconomy(); }} className="w-full p-4 rounded-xl border border-rose-900/30 bg-rose-950/10 text-rose-400 text-sm font-bold flex items-center justify-between hover:bg-rose-950/20 transition-all"><span>Reset Economy</span><RotateCcw size={16} /></button>
-        <button onClick={onLogout} className="w-full p-4 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 text-sm font-bold flex items-center justify-between hover:bg-zinc-800 transition-all"><span>Log Out</span><LogOut size={16} /></button>
+        <button onClick={() => { if(window.confirm("Reset tokens?")) onResetEconomy(); }} className="w-full p-4 rounded-xl border border-rose-900/30 bg-rose-950/10 text-rose-400 text-sm font-bold flex items-center justify-between"><span>Reset Economy</span><RotateCcw size={16} /></button>
+        <button onClick={onLogout} className="w-full p-4 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 text-sm font-bold flex items-center justify-between"><span>Log Out</span><LogOut size={16} /></button>
       </div>
     </div>
   );

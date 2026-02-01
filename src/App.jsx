@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Heart, ShoppingBag, Sparkles, BookOpen, Settings } from 'lucide-react';
 import { supabase } from './supabase'; 
 import Auth from './components/Auth';
@@ -8,6 +8,7 @@ import Store from './components/Store';
 import Journal from './components/Journal';
 import Config from './components/Config';
 import { FULL_DECK } from './data/gameData';
+import { THEMES } from './data/themes'; // Import the new theme map
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -17,6 +18,13 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [partnerProfile, setPartnerProfile] = useState(null);
   const [sharedState, setSharedState] = useState(null);
+  
+  // --- LOAD THEME OBJECT ---
+  const [currentThemeId, setCurrentThemeId] = useState('violet');
+  const theme = THEMES[currentThemeId] || THEMES.violet; // Get the full class map
+
+  const sharedStateRef = useRef(null);
+  
   const [history, setHistory] = useState([]);
   const [vouchers, setVouchers] = useState([]);
   const [customStoreItems, setCustomStoreItems] = useState([]);
@@ -24,6 +32,8 @@ export default function App() {
   const [hiddenCards, setHiddenCards] = useState([]); 
 
   const activeDeck = [...FULL_DECK, ...customDeckCards].filter(c => !hiddenCards.includes(String(c.id)));
+
+  useEffect(() => { sharedStateRef.current = sharedState; }, [sharedState]);
 
   // 1. INITIAL SESSION
   useEffect(() => {
@@ -48,37 +58,32 @@ export default function App() {
 
   // 2. REALTIME
   useEffect(() => {
-    if (!profile?.couple_id) {
-        supabase.removeAllChannels(); 
-        return;
-    }
-
+    if (!profile?.couple_id) { supabase.removeAllChannels(); return; }
     const coupleId = profile.couple_id;
 
-    const stateChannel = supabase.channel('couple_state_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${coupleId}` }, (payload) => {
+    supabase.channel('couple_state_changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'couples', filter: `id=eq.${coupleId}` }, (payload) => {
+          const newData = payload.new;
+          const oldData = sharedStateRef.current;
+          if (newData && oldData) {
+               if (oldData.sync_stage === 'idle' && newData.sync_stage === 'input') {
+                   if (Notification.permission === 'granted') new Notification("💕 Sync Started!", { body: "Partner is ready to connect." });
+               }
+               const partnerCol = profile.isUserLead ? 'signal_b' : 'signal_a';
+               if (newData[partnerCol] !== oldData[partnerCol] && newData[partnerCol]) {
+                   if (Notification.permission === 'granted') new Notification("✨ New Vibe", { body: `Partner is feeling ${newData[partnerCol].toUpperCase()}` });
+               }
+          }
           if (payload.new) setSharedState(payload.new);
-      })
-      .subscribe();
+      }).subscribe();
 
-    const profileChannel = supabase.channel('profile_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `couple_id=eq.${coupleId}` }, (payload) => {
-            if (session?.user?.id) fetchAllData(session.user.id);
-        })
+    supabase.channel('profile_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `couple_id=eq.${coupleId}` }, () => fetchAllData(session.user.id))
         .subscribe();
     
-    supabase.channel('history_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'history', filter: `couple_id=eq.${coupleId}` }, () => fetchHistory(coupleId))
-        .subscribe();
-
-    supabase.channel('deck_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomDeck(coupleId))
-        .subscribe();
-
-    supabase.channel('items_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomItems(coupleId))
-        .subscribe();
-
+    supabase.channel('history_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'history', filter: `couple_id=eq.${coupleId}` }, () => fetchHistory(coupleId)).subscribe();
+    supabase.channel('deck_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomDeck(coupleId)).subscribe();
+    supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomItems(coupleId)).subscribe();
     supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
     
     return () => supabase.removeAllChannels();
@@ -95,6 +100,9 @@ export default function App() {
         return;
     }
 
+    // --- SET THEME ID ---
+    if (myProfile.theme) setCurrentThemeId(myProfile.theme);
+
     let coupleState = null;
     let pProfile = null;
 
@@ -105,13 +113,7 @@ export default function App() {
         pProfile = p;
     }
 
-    const formattedProfile = {
-        ...myProfile,
-        isUserLead: myProfile.is_lead,
-        partnerName: pProfile ? pProfile.name : 'Partner'
-    };
-
-    setProfile(formattedProfile);
+    setProfile({ ...myProfile, isUserLead: myProfile.is_lead, partnerName: pProfile ? pProfile.name : 'Partner' });
     if (myProfile.hidden_card_ids) setHiddenCards(myProfile.hidden_card_ids);
     setSharedState(coupleState);
     setPartnerProfile(pProfile);
@@ -126,29 +128,13 @@ export default function App() {
   }
 
   // --- ACTIONS ---
-  
   const fetchHistory = async (targetCoupleId) => { 
-    if (!targetCoupleId) return;
     const { data } = await supabase.from('history').select('*').eq('couple_id', targetCoupleId).order('created_at', { ascending: false }); 
     setHistory(data || []); 
   };
-
   const fetchVouchers = async () => { const { data } = await supabase.from('vouchers').select('*').eq('redeemed', false); setVouchers(data || []); };
-  
-  const fetchCustomItems = async (targetCoupleId) => { 
-      const cId = targetCoupleId || profile?.couple_id;
-      if (!cId) return;
-      const { data } = await supabase.from('custom_store_items').select('*').eq('couple_id', cId); 
-      setCustomStoreItems(data || []); 
-  };
-  
-  const fetchCustomDeck = async (targetCoupleId) => { 
-      const cId = targetCoupleId || profile?.couple_id;
-      if (!cId) return;
-      const { data } = await supabase.from('custom_deck_cards').select('*').eq('couple_id', cId);
-      const mappedCards = (data || []).map(c => ({ ...c, desc: c.desc_text }));
-      setCustomDeckCards(mappedCards); 
-  };
+  const fetchCustomItems = async (cId) => { if(!cId) return; const { data } = await supabase.from('custom_store_items').select('*').eq('couple_id', cId); setCustomStoreItems(data || []); };
+  const fetchCustomDeck = async (cId) => { if(!cId) return; const { data } = await supabase.from('custom_deck_cards').select('*').eq('couple_id', cId); setCustomDeckCards((data || []).map(c => ({ ...c, desc: c.desc_text }))); };
 
   const handleCreateLink = async () => {
     const code = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -161,27 +147,17 @@ export default function App() {
   const handleJoinLink = async (code) => {
     setLoading(true);
     try {
-        const cleanCode = code.trim().toUpperCase();
-        const { data: couple, error } = await supabase.from('couples').select('id').eq('link_code', cleanCode).maybeSingle();
-        if (error) throw new Error("Database Error: " + error.message);
-        if (!couple) throw new Error("Invalid Code: No partner found.");
-        const { error: updateError } = await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
-        if (updateError) throw new Error("Could not join: " + updateError.message);
+        const { data: couple, error } = await supabase.from('couples').select('id').eq('link_code', code.trim().toUpperCase()).maybeSingle();
+        if (error || !couple) throw new Error("Invalid Code");
+        await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
         await fetchAllData(session.user.id); 
         setActiveTab('dashboard');
-    } catch (e) {
-        alert(e.message); 
-    } finally {
-        setLoading(false); 
-    }
+    } catch (e) { alert(e.message); } finally { setLoading(false); }
   };
 
   const handleUnlink = async () => {
-    const { error } = await supabase.rpc('disconnect_partner');
-    if (error) console.error("Unlink failed:", error);
-    setProfile(prev => ({ ...prev, couple_id: null }));
-    setPartnerProfile(null);
-    setSharedState(null);
+    await supabase.rpc('disconnect_partner');
+    setProfile(prev => ({ ...prev, couple_id: null })); setPartnerProfile(null); setSharedState(null);
     await fetchAllData(session.user.id);
   };
   
@@ -198,29 +174,22 @@ export default function App() {
   const handleOliveBranchClick = async () => {
     if (!sharedState) return;
     let updates = {};
-    if (sharedState.olive_branch_accepted_at) {
-      updates = { olive_branch_accepted_at: null, olive_branch_active: false, olive_branch_sender: null };
-    } else if (!sharedState.olive_branch_active) {
-      updates = { olive_branch_active: true, olive_branch_sender: session.user.id };
-    } else if (sharedState.olive_branch_sender === session.user.id) {
-      updates = { olive_branch_active: false, olive_branch_sender: null };
-    } else {
-      updates = { olive_branch_active: false, olive_branch_sender: null, olive_branch_accepted_at: new Date().toISOString() };
-    }
+    if (sharedState.olive_branch_accepted_at) updates = { olive_branch_accepted_at: null, olive_branch_active: false, olive_branch_sender: null };
+    else if (!sharedState.olive_branch_active) updates = { olive_branch_active: true, olive_branch_sender: session.user.id };
+    else if (sharedState.olive_branch_sender === session.user.id) updates = { olive_branch_active: false, olive_branch_sender: null };
+    else updates = { olive_branch_active: false, olive_branch_sender: null, olive_branch_accepted_at: new Date().toISOString() };
     setSharedState(prev => ({ ...prev, ...updates }));
     await supabase.from('couples').update(updates).eq('id', profile.couple_id);
   };
 
+  // --- PLAY LOGIC ---
   const handleSyncInput = async (inputs) => {
     setActiveTab('dashboard');
     const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
     setSharedState(prev => ({ ...prev, [col]: inputs, sync_stage: prev.sync_stage === 'idle' ? 'input' : prev.sync_stage }));
     await supabase.from('couples').update({ [col]: inputs, sync_stage: 'input' }).eq('id', profile.couple_id);
     
-    const leadData = profile.isUserLead ? inputs : sharedState.sync_data_lead;
-    const partnerData = !profile.isUserLead ? inputs : sharedState.sync_data_partner;
-    
-    if (leadData && partnerData) {
+    if ((profile.isUserLead ? inputs : sharedState.sync_data_lead) && (!profile.isUserLead ? inputs : sharedState.sync_data_partner)) {
         setSharedState(prev => ({ ...prev, sync_stage: 'lead_picking' }));
         await supabase.from('couples').update({ sync_stage: 'lead_picking' }).eq('id', profile.couple_id);
     }
@@ -236,41 +205,23 @@ export default function App() {
      setActiveTab('dashboard');
      setSharedState(prev => ({ ...prev, sync_stage: 'active', sync_pool: [finalCard] }));
      
-     const getInt = (val) => {
-         if (val === 'high' || val === 3) return 3;
-         if (val === 'medium' || val === 2) return 2;
-         return 1;
-     };
-
+     const getInt = (val) => { if (val === 'high' || val === 3) return 3; if (val === 'medium' || val === 2) return 2; return 1; };
      const leadReq = getInt(sharedState.sync_data_lead?.intensity);
      const partnerReq = getInt(sharedState.sync_data_partner?.intensity);
      const finalInt = getInt(finalCard.intensity);
 
      if (leadReq > finalInt) {
          const leadId = profile.isUserLead ? profile.id : partnerProfile?.id;
-         if (leadId) {
-             const currentTokens = (profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0;
-             await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', leadId);
-             if (profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
-         }
+         await supabase.from('profiles').update({ tokens: ((profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0) + 1 }).eq('id', leadId);
+         if (profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
      }
-
      if (partnerReq > finalInt) {
          const partnerId = !profile.isUserLead ? profile.id : partnerProfile?.id;
-         if (partnerId) {
-             const currentTokens = (!profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0;
-             await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', partnerId);
-             if (!profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
-         }
+         await supabase.from('profiles').update({ tokens: ((!profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0) + 1 }).eq('id', partnerId);
+         if (!profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
      }
 
-     await supabase.from('history').insert([{ 
-         title: finalCard.title, 
-         intensity: finalCard.intensity, 
-         couple_id: profile.couple_id,
-         created_at: new Date().toISOString() 
-     }]);
-
+     await supabase.from('history').insert([{ title: finalCard.title, intensity: finalCard.intensity, couple_id: profile.couple_id, created_at: new Date().toISOString() }]);
      await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
 
      if (partnerProfile) {
@@ -295,18 +246,19 @@ export default function App() {
   };
   
   const handleContribute = async (amount) => {
-      const currentVault = sharedState.vault_current || 0;
-      const newTotal = currentVault + amount;
+      const newTotal = (sharedState.vault_current || 0) + amount;
       setProfile(prev => ({...prev, tokens: prev.tokens - amount}));
       await supabase.from('profiles').update({ tokens: (profile.tokens || 0) - amount }).eq('id', session.user.id);
       setSharedState(prev => ({...prev, vault_current: newTotal}));
       await supabase.from('couples').update({ vault_current: newTotal }).eq('id', profile.couple_id);
   };
 
-  if (loading || (profile?.couple_id && !sharedState)) {
-      return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
-  }
-  
+  const handleUpdateTheme = async (newColorId) => {
+      setCurrentThemeId(newColorId);
+      await supabase.from('profiles').update({ theme: newColorId }).eq('id', session.user.id);
+  };
+
+  if (loading || (profile?.couple_id && !sharedState)) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
   if (!session) return <Auth onLoginSuccess={() => fetchAllData(supabase.auth.getUser().then(({data}) => data.user.id))} />;
 
   const NavItem = ({ id, label, icon: Icon }) => (
@@ -319,7 +271,9 @@ export default function App() {
   return (
     <div className="h-[100dvh] w-full bg-zinc-950 text-zinc-200 font-sans flex justify-center selection:bg-violet-500/30 overflow-hidden fixed inset-0">
       <div className="w-full max-w-md bg-zinc-950 h-full relative shadow-2xl flex flex-col overflow-hidden font-sans">
-        <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 opacity-70 shrink-0" />
+        
+        {/* DYNAMIC HEADER: Uses the 'gradientFrom' class from the theme object */}
+        <div className={`h-1 w-full bg-gradient-to-r ${theme.gradientFrom} via-fuchsia-600 to-indigo-600 opacity-70 shrink-0 transition-colors duration-500`} />
         
         <div className="flex-1 overflow-y-auto p-5 scrollbar-hide overscroll-contain pb-24">
           {activeTab === 'dashboard' && (
@@ -330,7 +284,6 @@ export default function App() {
                 partnerSignal={profile?.isUserLead ? sharedState?.signal_b : sharedState?.signal_a} 
                 mySignal={profile?.isUserLead ? sharedState?.signal_a : sharedState?.signal_b} 
                 onSignal={handleSignal} 
-                lastActivityDate={Date.now()} 
                 oliveBranchActive={sharedState?.olive_branch_active} 
                 oliveBranchSender={sharedState?.olive_branch_sender} 
                 oliveBranchAcceptedAt={sharedState?.olive_branch_accepted_at} 
@@ -338,6 +291,7 @@ export default function App() {
                 sessionUserId={session.user.id} 
                 syncStage={sharedState?.sync_stage} 
                 onNavigate={setActiveTab} 
+                theme={theme} // PASS FULL THEME OBJECT
             />
           )}
           
@@ -352,6 +306,7 @@ export default function App() {
                     onLeadSelection={handleLeadSelection} 
                     onFinalSelection={handleFinalSelection} 
                     onResetSync={handleResetSync} 
+                    theme={theme} // PASS FULL THEME OBJECT
                   />
                 )}
                 {activeTab === 'store' && (
@@ -361,37 +316,20 @@ export default function App() {
                       vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} 
                       onContribute={handleContribute} 
                       customItems={customStoreItems} 
-                      onAddCustomItem={async (item) => {
-                        const { error } = await supabase.from('custom_store_items').insert([{ ...item, couple_id: profile.couple_id }]);
-                        if (error) alert(error.message);
-                        else fetchCustomItems(profile.couple_id);
-                      }}
-                      onDeleteCustomItem={async (id) => {
-                        await supabase.from('custom_store_items').delete().eq('id', id);
-                        fetchCustomItems(profile.couple_id);
-                      }}
-                      // --- NEW: Pass Update Vault Here ---
-                      onUpdateVault={async (name, goal) => {
-                        await supabase.from('couples').update({ vault_name: name, vault_goal: goal }).eq('id', profile.couple_id);
-                      }}
+                      onAddCustomItem={async (item) => { const { error } = await supabase.from('custom_store_items').insert([{ ...item, couple_id: profile.couple_id }]); if(error) alert(error.message); else fetchCustomItems(profile.couple_id); }}
+                      onDeleteCustomItem={async (id) => { await supabase.from('custom_store_items').delete().eq('id', id); fetchCustomItems(profile.couple_id); }}
+                      onUpdateVault={async (name, goal) => { await supabase.from('couples').update({ vault_name: name, vault_goal: goal }).eq('id', profile.couple_id); }}
+                      theme={theme} // PASS FULL THEME OBJECT
                   />
                 )}
                 {activeTab === 'memories' && (
                   <Journal 
                     profile={profile} 
                     history={history} 
-                    onAddMemory={async (newMem) => {
-                        await supabase.from('history').insert([{ ...newMem, couple_id: profile.couple_id }]);
-                        fetchHistory(profile.couple_id);
-                    }} 
-                    onDeleteMemory={async (id) => {
-                        await supabase.from('history').delete().eq('id', id);
-                        fetchHistory(profile.couple_id);
-                    }} 
-                    onUpdateMemory={async (id, updates) => {
-                        await supabase.from('history').update(updates).eq('id', id);
-                        fetchHistory(profile.couple_id);
-                    }} 
+                    onAddMemory={async (newMem) => { await supabase.from('history').insert([{ ...newMem, couple_id: profile.couple_id }]); fetchHistory(profile.couple_id); }} 
+                    onDeleteMemory={async (id) => { await supabase.from('history').delete().eq('id', id); fetchHistory(profile.couple_id); }} 
+                    onUpdateMemory={async (id, updates) => { await supabase.from('history').update(updates).eq('id', id); fetchHistory(profile.couple_id); }} 
+                    theme={theme} // PASS FULL THEME OBJECT
                   />
                 )}
               </>
@@ -410,42 +348,29 @@ export default function App() {
                 onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
                 onLogout={handleLogout} 
                 activeDeck={activeDeck} 
-                onAddDeckCard={async (newCard) => {
-                    const cardPayload = {
-                        title: newCard.title,
-                        intensity: newCard.intensity,
-                        category: newCard.category,
-                        desc_text: newCard.desc,
-                        couple_id: profile.couple_id
-                    };
-                    const { error } = await supabase.from('custom_deck_cards').insert([cardPayload]);
-                    if (error) alert(error.message);
-                    else fetchCustomDeck(profile.couple_id); 
-                }} 
-                onDeleteDeckCard={async (card) => {
-                    const isCustom = customDeckCards.some(c => c.id === card.id);
-                    if (isCustom) {
-                        await supabase.from('custom_deck_cards').delete().eq('id', card.id);
-                        fetchCustomDeck(profile.couple_id);
-                    } else {
-                        const newHidden = [...hiddenCards, String(card.id)];
-                        setHiddenCards(newHidden);
-                        await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', session.user.id);
-                    }
-                }}
+                onAddDeckCard={async (newCard) => { const { error } = await supabase.from('custom_deck_cards').insert([{ ...newCard, desc_text: newCard.desc, couple_id: profile.couple_id }]); if(error) alert(error.message); else fetchCustomDeck(profile.couple_id); }} 
+                onDeleteDeckCard={async (card) => { if (customDeckCards.some(c => c.id === card.id)) { await supabase.from('custom_deck_cards').delete().eq('id', card.id); fetchCustomDeck(profile.couple_id); } else { const newHidden = [...hiddenCards, String(card.id)]; setHiddenCards(newHidden); await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', session.user.id); } }}
                 onCreateLink={handleCreateLink}
                 onJoinLink={handleJoinLink}
                 onUnlink={handleUnlink}
                 onRefresh={() => fetchAllData(session.user.id)}
+                theme={theme} // PASS FULL THEME OBJECT
+                onUpdateTheme={handleUpdateTheme}
             />
           )}
         </div>
         
+        {/* NAVBAR */}
         <div className="w-full bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800/50 pb-8 pt-2 px-6 shrink-0 z-50">
           <div className="flex justify-between items-center relative">
             <NavItem id="dashboard" label="Home" icon={Heart} />
             <NavItem id="store" label="Store" icon={ShoppingBag} />
-            <div className="relative -top-8"><button onClick={() => setActiveTab('play')} className="h-16 w-16 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] border-[6px] border-zinc-950 active:scale-90 transition-all"><Sparkles size={28} fill="currentColor" /></button></div>
+            <div className="relative -top-8">
+                {/* DYNAMIC PLAY BUTTON: Uses 'gradientFrom' */}
+                <button onClick={() => setActiveTab('play')} className={`h-16 w-16 rounded-full bg-gradient-to-tr ${theme.gradientFrom} to-indigo-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] border-[6px] border-zinc-950 active:scale-90 transition-all`}>
+                    <Sparkles size={28} fill="currentColor" />
+                </button>
+            </div>
             <NavItem id="memories" label="History" icon={BookOpen} />
             <NavItem id="setup" label="Config" icon={Settings} />
           </div>
