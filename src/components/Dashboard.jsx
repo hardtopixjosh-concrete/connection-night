@@ -25,24 +25,45 @@ export default function Dashboard({
   const isLeadPicking = syncStage === 'lead_picking';
   const isPartnerPicking = syncStage === 'partner_picking';
 
-  const todayStr = new Date().toDateString();
-  let dateHash = 0;
-  for (let i = 0; i < todayStr.length; i++) {
-    dateHash = todayStr.charCodeAt(i) + ((dateHash << 5) - dateHash);
-  }
-  let rawOptions = partnerProfile?.partner_focus_areas?.length > 0 ? partnerProfile.partner_focus_areas : ['hugs'];
-  const validOptions = rawOptions.filter(id => DAILY_QUESTS[id]);
-  const finalOptions = validOptions.length > 0 ? validOptions : ['hugs'];
-  const dailyId = finalOptions[Math.abs(dateHash) % finalOptions.length];
-  let quest = "Spend time together.";
-  const rawQuestData = DAILY_QUESTS[dailyId];
-  if (Array.isArray(rawQuestData)) {
-    const questIndex = Math.abs(dateHash) % rawQuestData.length;
-    quest = rawQuestData[questIndex];
-  } else if (typeof rawQuestData === 'string') {
-    quest = rawQuestData;
-  }
-  const focusLabel = MICRO_CONNECTIONS.find(m => m.id === dailyId)?.label || 'Connection';
+// --- DAILY DROP LOGIC (FIXED) ---
+  const [dailyDrop, setDailyDrop] = useState({ label: 'Connection', quest: 'Loading daily quest...' });
+
+  useEffect(() => {
+    // 1. Get Partner Preferences (or default to empty)
+    const prefs = partnerProfile?.partner_focus_areas || [];
+    
+    // 2. Filter MICRO_CONNECTIONS to only include what partner likes
+    // We filter the master list so we have valid IDs and Labels
+    let availableTypes = MICRO_CONNECTIONS.filter(m => prefs.includes(m.id));
+
+    // Fallback: If they haven't picked anything yet, use the whole list
+    if (availableTypes.length === 0) availableTypes = MICRO_CONNECTIONS;
+
+    // 3. Generate Date Hash (So it stays the same all day)
+    const todayStr = new Date().toDateString();
+    let hash = 0;
+    for (let i = 0; i < todayStr.length; i++) hash = todayStr.charCodeAt(i) + ((hash << 5) - hash);
+    
+    // 4. Pick a Type
+    const selectedType = availableTypes[Math.abs(hash) % availableTypes.length];
+
+    // 5. Get the Text
+    if (selectedType && DAILY_QUESTS[selectedType.id]) {
+        const rawQuest = DAILY_QUESTS[selectedType.id];
+        let finalQuestText = "Spend quality time together.";
+
+        if (Array.isArray(rawQuest)) {
+            finalQuestText = rawQuest[Math.abs(hash) % rawQuest.length];
+        } else if (typeof rawQuest === 'string') {
+            finalQuestText = rawQuest;
+        }
+        setDailyDrop({ label: selectedType.label, quest: finalQuestText });
+    }
+  }, [partnerProfile]); // <--- Reruns exactly when partner data arrives
+
+  const focusLabel = dailyDrop.label;
+  const quest = dailyDrop.quest;
+  // --------------------------------
 
   const SIGNAL_STYLES = {
     horny: { bg: "bg-orange-950/40", border: "border-orange-500/50", iconBg: "bg-orange-500", shadow: "shadow-[0_0_15px_rgba(249,115,22,0.4)]", text: "text-orange-200", strong: "text-orange-100" },
