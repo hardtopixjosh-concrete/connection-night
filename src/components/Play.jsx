@@ -86,11 +86,24 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     );
   }
 
-  // --- MODE SELECTION ---
+// --- MODE SELECTION ---
   if (sharedState?.sync_stage === 'idle' && localStage === 'mode_selection') {
     return (
       <div className="animate-in slide-in-from-bottom-4 duration-500 h-full flex flex-col justify-center px-6 space-y-6">
-        <div className="text-center mb-4"><Sparkles size={48} className="mx-auto text-violet-500 mb-4" /><h2 className="text-3xl font-light text-white">Connection Mode</h2></div>
+        <div className="text-center mb-2">
+            <Sparkles size={48} className="mx-auto text-violet-500 mb-4" />
+            <h2 className="text-3xl font-light text-white">Connection Mode</h2>
+        </div>
+
+        {/* --- ADDED: ROLE INDICATOR --- */}
+        <div className={`flex items-center justify-center gap-2 py-2 px-4 rounded-full border ${profile.isUserLead ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-blue-500/10 border-blue-500/30 text-blue-400'}`}>
+            {profile.isUserLead ? <Crown size={14} /> : <Shield size={14} />}
+            <span className="text-[10px] font-black uppercase tracking-widest">
+                {profile.isUserLead ? "You are In Charge" : "Partner is In Charge"}
+            </span>
+        </div>
+        {/* ----------------------------- */}
+
         <button onClick={() => handleModeSelect('standard')} className="w-full p-6 rounded-3xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 transition-all text-left group active:scale-95">
           <div className="flex justify-between items-center mb-2"><h3 className="text-xl font-bold text-white">Standard Sync</h3><ArrowRight className="text-zinc-600 group-hover:text-white" /></div>
           <p className="text-xs text-zinc-500">You pick 3, they pick 1. The classic negotiation.</p>

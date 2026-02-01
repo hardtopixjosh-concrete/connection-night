@@ -266,31 +266,23 @@ export default function App() {
      const partnerReq = getInt(sharedState.sync_data_partner?.intensity);
      const finalInt = getInt(finalCard.intensity);
 
-     // Did the LEAD compromise? (Asked for higher than result)
+     // Check Lead Compromise
      if (leadReq > finalInt) {
          const leadId = profile.isUserLead ? profile.id : partnerProfile?.id;
          if (leadId) {
              const currentTokens = (profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0;
-             // Update DB
              await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', leadId);
-             // Update Local Screen if it's ME
-             if (profile.isUserLead) {
-                 setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
-             }
+             if (profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
          }
      }
 
-     // Did the PARTNER compromise?
+     // Check Partner Compromise
      if (partnerReq > finalInt) {
          const partnerId = !profile.isUserLead ? profile.id : partnerProfile?.id;
          if (partnerId) {
              const currentTokens = (!profile.isUserLead ? profile.tokens : partnerProfile?.tokens) || 0;
-             // Update DB
              await supabase.from('profiles').update({ tokens: currentTokens + 1 }).eq('id', partnerId);
-             // Update Local Screen if it's ME
-             if (!profile.isUserLead) {
-                 setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
-             }
+             if (!profile.isUserLead) setProfile(prev => ({ ...prev, tokens: (prev.tokens || 0) + 1 }));
          }
      }
      // ---------------------------
@@ -305,6 +297,20 @@ export default function App() {
 
      // 3. Update Couple State
      await supabase.from('couples').update({ sync_stage: 'active', sync_pool: [finalCard] }).eq('id', profile.couple_id);
+
+     // --- THE FIX: SWAP ROLES ---
+     // I flip to the opposite of what I was. Partner flips to what I was.
+     if (partnerProfile) {
+         const myNewRole = !profile.isUserLead;
+         const partnerNewRole = profile.isUserLead; // They take my old role
+         
+         await supabase.from('profiles').update({ is_lead: myNewRole }).eq('id', session.user.id);
+         await supabase.from('profiles').update({ is_lead: partnerNewRole }).eq('id', partnerProfile.id);
+         
+         // Update local state immediately so UI reflects it
+         setProfile(prev => ({ ...prev, isUserLead: myNewRole }));
+     }
+     // ---------------------------
   };
   
   const handleResetSync = async () => {
