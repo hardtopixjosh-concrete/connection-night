@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ShoppingBag, Lock, Plus, Ticket, Star, Trash2, Coins } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShoppingBag, Lock, Plus, Ticket, Trash2, Coins, Edit2, CheckCircle2, X } from 'lucide-react';
 import { Card, Button } from './SharedUI';
 import { STORE_ITEMS } from '../data/gameData';
 
@@ -10,14 +10,28 @@ export default function Store({
   onContribute, 
   customItems = [], 
   onAddCustomItem, 
-  onDeleteCustomItem 
+  onDeleteCustomItem,
+  onUpdateVault
 }) {
   const [contribution, setContribution] = useState(1);
-  const [activeTab, setActiveTab] = useState('buy'); // 'buy' or 'manage'
+  const [activeTab, setActiveTab] = useState('buy'); 
   
-  // Custom Item Form State
+  // Custom Item Form
   const [newItemName, setNewItemName] = useState('');
   const [newItemCost, setNewItemCost] = useState(5);
+
+  // Vault Editing
+  const [isEditingVault, setIsEditingVault] = useState(false);
+  const [editVaultName, setEditVaultName] = useState('');
+  const [editVaultGoal, setEditVaultGoal] = useState(50);
+
+  // Sync state to local state when opening edit or receiving props
+  useEffect(() => {
+      if (!isEditingVault) {
+          setEditVaultName(vault.name);
+          setEditVaultGoal(vault.goal);
+      }
+  }, [vault, isEditingVault]);
 
   const handleContribute = () => {
     if (tokens >= contribution && contribution > 0) {
@@ -31,6 +45,11 @@ export default function Store({
     onAddCustomItem({ label: newItemName, cost: parseInt(newItemCost) });
     setNewItemName('');
     setNewItemCost(5);
+  };
+
+  const handleSaveVault = () => {
+      onUpdateVault(editVaultName, parseInt(editVaultGoal));
+      setIsEditingVault(false);
   };
 
   return (
@@ -56,17 +75,45 @@ export default function Store({
       {activeTab === 'buy' ? (
         <div className="space-y-6">
           {/* VAULT */}
-          <Card className="bg-gradient-to-br from-zinc-900 to-zinc-900 border-amber-900/30">
+          <Card className="bg-gradient-to-br from-zinc-900 to-zinc-900 border-amber-900/30 relative">
             <div className="flex justify-between items-start mb-4">
-              <div><h3 className="text-white font-bold text-lg uppercase tracking-wide">Shared Vault</h3><p className="text-amber-500/60 text-xs font-mono uppercase">Goal: {vault.name}</p></div>
-              <Lock size={20} className="text-amber-600" />
+              <div>
+                  <h3 className="text-white font-bold text-lg uppercase tracking-wide">Shared Vault</h3>
+                  {!isEditingVault && <p className="text-amber-500/60 text-xs font-mono uppercase">Goal: {vault.name}</p>}
+              </div>
+              <div className="flex gap-2">
+                  <button onClick={() => setIsEditingVault(!isEditingVault)} className="text-zinc-500 hover:text-white transition-colors p-1"><Edit2 size={16}/></button>
+                  <Lock size={20} className="text-amber-600" />
+              </div>
             </div>
-            <div className="w-full bg-zinc-800 h-4 rounded-full overflow-hidden mb-4"><div className="h-full bg-amber-500 transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${(vault.current / vault.goal) * 100}%` }} /></div>
-            <div className="flex justify-between items-center text-xs font-bold text-zinc-500 uppercase tracking-widest mb-6"><span>{vault.current} Saved</span><span>{vault.goal} Target</span></div>
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center bg-zinc-950 rounded-xl border border-zinc-800 px-3"><span className="text-zinc-500 font-bold text-xs mr-2">AMT</span><input type="number" min="1" max={tokens} value={contribution} onChange={(e) => setContribution(parseInt(e.target.value) || 0)} className="w-full bg-transparent text-white font-bold focus:outline-none" /></div>
-              <Button disabled={tokens < contribution || contribution <= 0} onClick={handleContribute} className="px-6 bg-amber-600 hover:bg-amber-500 text-white">Deposit</Button>
-            </div>
+
+            {isEditingVault ? (
+                // EDIT MODE
+                <div className="space-y-3 animate-in fade-in">
+                    <div>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase">Goal Name</label>
+                        <input className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white text-xs" value={editVaultName} onChange={e => setEditVaultName(e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase">Target Amount</label>
+                        <input type="number" className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white text-xs" value={editVaultGoal} onChange={e => setEditVaultGoal(e.target.value)} />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                        <button onClick={() => setIsEditingVault(false)} className="flex-1 bg-zinc-800 text-zinc-400 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1"><X size={14} /> Cancel</button>
+                        <button onClick={handleSaveVault} className="flex-1 bg-amber-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1"><CheckCircle2 size={14} /> Save</button>
+                    </div>
+                </div>
+            ) : (
+                // VIEW MODE
+                <>
+                    <div className="w-full bg-zinc-800 h-4 rounded-full overflow-hidden mb-4"><div className="h-full bg-amber-500 transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${(vault.current / vault.goal) * 100}%` }} /></div>
+                    <div className="flex justify-between items-center text-xs font-bold text-zinc-500 uppercase tracking-widest mb-6"><span>{vault.current} Saved</span><span>{vault.goal} Target</span></div>
+                    <div className="flex gap-2">
+                    <div className="flex-1 flex items-center bg-zinc-950 rounded-xl border border-zinc-800 px-3"><span className="text-zinc-500 font-bold text-xs mr-2">AMT</span><input type="number" min="1" max={tokens} value={contribution} onChange={(e) => setContribution(parseInt(e.target.value) || 0)} className="w-full bg-transparent text-white font-bold focus:outline-none" /></div>
+                    <Button disabled={tokens < contribution || contribution <= 0} onClick={handleContribute} className="px-6 bg-amber-600 hover:bg-amber-500 text-white">Deposit</Button>
+                    </div>
+                </>
+            )}
           </Card>
 
           {/* STORE ITEMS */}

@@ -1,42 +1,80 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Calendar, Trash2, X, Save, Edit2, Image as ImageIcon, Upload, Link as LinkIcon, Heart, Download, Maximize2 } from 'lucide-react';
+import { Camera, Calendar, Trash2, X, Save, Edit2, Image as ImageIcon, Upload, Link as LinkIcon, Heart, Download, Maximize2, Loader2 } from 'lucide-react';
 import { Button } from './SharedUI';
+import { supabase } from '../supabase'; // Import Supabase for uploading
 
 export default function Journal({ profile, history, onAddMemory, onDeleteMemory, onUpdateMemory }) {
   const [isAdding, setIsAdding] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // New Loading State
   const fileInputRef = useRef(null);
   
   // State for Editing/Viewing
   const [editingMemory, setEditingMemory] = useState(null);
-  const [viewingImage, setViewingImage] = useState(null); // For Lightbox
+  const [viewingImage, setViewingImage] = useState(null); 
   
   // Form State
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [newImage, setNewImage] = useState('');
-  const [rating, setRating] = useState(5); // 1-5 Hearts
+  const [newImage, setNewImage] = useState(''); // Stores Preview or URL
+  const [fileToUpload, setFileToUpload] = useState(null); // Stores actual File
+  const [rating, setRating] = useState(5); 
   const [inputType, setInputType] = useState('upload'); 
 
-  // Helper: File to Base64
+  // --- UPLOAD HELPER ---
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setFileToUpload(file); // Store file for later upload
+      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => setNewImage(reader.result);
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSubmit = (e) => {
+  const uploadImageToSupabase = async (file) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('memories')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('memories').getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+  // ---------------------
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onAddMemory({ 
-      title: newTitle, 
-      desc: newDesc, 
-      image: newImage, 
-      intensity: 'medium',
-      rating: rating
-    });
-    resetForm();
+    setIsUploading(true);
+
+    try {
+        let finalImageUrl = newImage;
+
+        // If we have a raw file, upload it first
+        if (fileToUpload) {
+            finalImageUrl = await uploadImageToSupabase(fileToUpload);
+        }
+
+        // Send to App.jsx
+        await onAddMemory({ 
+          title: newTitle, 
+          notes: newDesc, // Renamed to match DB column 'notes'
+          image_url: finalImageUrl, 
+          intensity: 'medium',
+          rating: rating
+        });
+
+        resetForm();
+    } catch (error) {
+        alert("Error uploading: " + error.message);
+    } finally {
+        setIsUploading(false);
+    }
   };
 
   const resetForm = () => {
@@ -44,6 +82,7 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
     setNewTitle(''); 
     setNewDesc(''); 
     setNewImage('');
+    setFileToUpload(null);
     setRating(5);
   };
 
@@ -52,17 +91,32 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
     setNewTitle(memory.title);
     setNewDesc(memory.notes || '');
     setNewImage(memory.image_url || '');
+    setFileToUpload(null);
     setRating(memory.rating || 5);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingMemory) return;
-    onUpdateMemory(editingMemory.id, { 
-      notes: newDesc, 
-      image_url: newImage,
-      rating: rating
-    });
-    setEditingMemory(null);
+    setIsUploading(true);
+
+    try {
+        let finalImageUrl = newImage;
+        if (fileToUpload) {
+            finalImageUrl = await uploadImageToSupabase(fileToUpload);
+        }
+
+        await onUpdateMemory(editingMemory.id, { 
+            title: newTitle,
+            notes: newDesc, 
+            image_url: finalImageUrl,
+            rating: rating
+        });
+        setEditingMemory(null);
+    } catch (e) {
+        alert("Update failed: " + e.message);
+    } finally {
+        setIsUploading(false);
+    }
   };
 
   const handleDelete = () => {
@@ -73,7 +127,6 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
     }
   };
 
-  // --- STYLES HELPER ---
   const getIntensityStyles = (intensity) => {
     switch (intensity) {
       case 'high': return 'bg-rose-950/20 border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)]';
@@ -96,7 +149,6 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
       </div>
 
       {/* --- ADD MEMORY MODAL --- */}
-      {/* Changed z-50 to z-[100] to fix overlap */}
       {isAdding && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-zinc-900 w-full max-w-sm rounded-3xl border border-zinc-800 p-6 animate-in zoom-in-95 flex flex-col max-h-[85vh] overflow-y-auto">
@@ -112,7 +164,7 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
                 {newImage ? (
                   <div className="relative h-40 w-full rounded-xl overflow-hidden border border-zinc-700 group">
                     <img src={newImage} alt="Preview" className="w-full h-full object-cover" />
-                    <button type="button" onClick={() => setNewImage('')} className="absolute top-2 right-2 bg-black/60 p-2 rounded-full text-white hover:bg-red-600 transition-colors">
+                    <button type="button" onClick={() => {setNewImage(''); setFileToUpload(null);}} className="absolute top-2 right-2 bg-black/60 p-2 rounded-full text-white hover:bg-red-600 transition-colors">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -156,19 +208,19 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
                 <textarea className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white mt-1 h-24 text-sm" value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Notes..." />
               </div>
 
-              <Button type="submit" variant="accent" className="w-full py-4">Save to History</Button>
+              <Button type="submit" variant="accent" className="w-full py-4" disabled={isUploading}>
+                {isUploading ? <Loader2 className="animate-spin mx-auto" /> : "Save to History"}
+              </Button>
             </form>
           </div>
         </div>
       )}
 
       {/* --- EDIT DETAIL MODAL --- */}
-      {/* Changed z-50 to z-[100] to fix overlap */}
       {editingMemory && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className={`bg-zinc-900 w-full max-w-sm rounded-3xl border overflow-hidden shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh] ${getIntensityStyles(editingMemory.intensity)}`}>
             
-            {/* Image Header with Zoom */}
             <div className="relative h-64 bg-zinc-950 flex items-center justify-center group shrink-0">
                {newImage ? (
                  <div className="w-full h-full relative cursor-pointer" onClick={() => setViewingImage(newImage)}>
@@ -195,7 +247,6 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
                  <p className="text-zinc-500 text-xs mt-1 uppercase tracking-wider flex items-center gap-1"><Calendar size={12} /> {new Date(editingMemory.created_at).toLocaleDateString()}</p>
                </div>
 
-               {/* Heart Rating (Editable) */}
                <div>
                  <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-2 block">Rating</label>
                  <div className="flex gap-2">
@@ -220,7 +271,9 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
 
             <div className="p-4 border-t border-zinc-800 bg-zinc-900/90 backdrop-blur flex gap-3 shrink-0">
                <button onClick={handleDelete} className="p-4 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors"><Trash2 size={20} /></button>
-               <button onClick={handleSaveEdit} className="flex-1 py-4 bg-white text-black font-bold rounded-xl uppercase tracking-widest hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"><Save size={18} /> Save Changes</button>
+               <button onClick={handleSaveEdit} className="flex-1 py-4 bg-white text-black font-bold rounded-xl uppercase tracking-widest hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2" disabled={isUploading}>
+                   {isUploading ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Save Changes</>}
+               </button>
             </div>
           </div>
         </div>
@@ -254,7 +307,6 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
               className={`group relative overflow-hidden rounded-3xl border transition-all cursor-pointer active:scale-98 ${intensityStyle}`}
             >
               <div className="flex h-28">
-                {/* Left Side: Image Strip */}
                 {item.image_url ? (
                   <div className="w-28 relative shrink-0">
                     <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
@@ -264,7 +316,6 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
                   <div className="w-3 bg-zinc-800/50 shrink-0" /> 
                 )}
                 
-                {/* Right Side: Content */}
                 <div className="flex-1 p-4 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-start">

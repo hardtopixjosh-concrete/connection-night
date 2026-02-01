@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, User, Heart } from 'lucide-react';
+// FIX: Added 'Trash2' to the imports below
+import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle } from 'lucide-react';
 import { Card, Button } from './SharedUI';
 import { supabase } from '../supabase';
 
@@ -28,6 +29,7 @@ export default function Config({
   activeDeck,
   onAddDeckCard,
   onDeleteDeckCard,
+  onUpdateVault,
   onCreateLink,
   onJoinLink,
   onUnlink,
@@ -38,42 +40,28 @@ export default function Config({
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // Linking State
   const [linkMode, setLinkMode] = useState(null); 
   const [joinCode, setJoinCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState(null);
   const [linkError, setLinkError] = useState(null);
   
-  // Deck Management State
   const [deckTab, setDeckTab] = useState('low'); 
   const [newCardTitle, setNewCardTitle] = useState('');
   const [newCardDesc, setNewCardDesc] = useState('');
 
-  // --- FIX 1: SYNC STATE WHEN PROFILE LOADS ---
   useEffect(() => {
     if (profile) {
         setName(profile.name || '');
-        // Default to empty array if null
         setFocusAreas(profile.partner_focus_areas || []);
     }
   }, [profile]); 
 
-  // --- FIX 2: DIRECT SAVE TO DATABASE ---
   const handleSave = async () => {
     setLoading(true);
     try {
-        // 1. Update DB directly
-        const { error } = await supabase
-            .from('profiles')
-            .update({ name, partner_focus_areas: focusAreas })
-            .eq('id', profile.id);
-            
+        const { error } = await supabase.from('profiles').update({ name, partner_focus_areas: focusAreas }).eq('id', profile.id);
         if (error) throw error;
-
-        // 2. Update Local State (App.jsx)
         onUpdateProfile({ name, partner_focus_areas: focusAreas });
-
-        // 3. Success Feedback
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -100,7 +88,6 @@ export default function Config({
     setNewCardDesc('');
   };
 
-  // Linking Actions
   const handleGenerate = async () => {
     setLoading(true);
     try {
@@ -138,95 +125,50 @@ export default function Config({
       {/* --- IDENTITY & CONNECTION --- */}
       <Card title="Identity & Connection">
         <div className="space-y-6">
-          
-          {/* My Name */}
           <div>
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Your Name</label>
-            <input 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white mt-1 focus:border-violet-500 focus:outline-none" 
-                value={name} 
-                onChange={e => setName(e.target.value)} 
-            />
+            <input className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white mt-1 focus:border-violet-500 focus:outline-none" value={name} onChange={e => setName(e.target.value)} />
           </div>
 
-          {/* Connection Logic */}
           <div>
              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 block">Partner Connection</label>
-             
              {profile?.couple_id ? (
-                // --- LINKED STATE ---
                 <div className="space-y-3">
                     {partnerProfile ? (
-                        // FULLY CONNECTED
                         <div className="bg-emerald-900/10 border border-emerald-500/20 rounded-xl p-3 flex items-center justify-between">
                             <div>
-                                <div className="text-emerald-400 text-sm font-bold flex items-center gap-2">
-                                    <LinkIcon size={14} /> Connected
-                                </div>
-                                <div className="text-zinc-400 text-xs mt-1">
-                                    Linked with <span className="text-white font-bold">{partnerProfile.name}</span>
-                                </div>
+                                <div className="text-emerald-400 text-sm font-bold flex items-center gap-2"><LinkIcon size={14} /> Connected</div>
+                                <div className="text-zinc-400 text-xs mt-1">Linked with <span className="text-white font-bold">{partnerProfile.name}</span></div>
                             </div>
-                            <button onClick={onUnlink} className="p-2 bg-zinc-950 hover:bg-rose-950/30 text-zinc-600 hover:text-rose-500 rounded-lg transition-colors">
-                                <XCircle size={18} />
-                            </button>
+                            <button onClick={onUnlink} className="p-2 bg-zinc-950 hover:bg-rose-950/30 text-zinc-600 hover:text-rose-500 rounded-lg transition-colors"><XCircle size={18} /></button>
                         </div>
                     ) : (
-                        // WAITING FOR PARTNER
                         <div className="bg-amber-900/10 border border-amber-500/20 rounded-xl p-4">
                             <div className="flex justify-between items-start mb-3">
-                                <div>
-                                    <div className="text-amber-400 text-sm font-bold flex items-center gap-2">
-                                        <AlertTriangle size={14} /> Waiting for Partner
-                                    </div>
-                                    <div className="text-zinc-500 text-[10px] mt-1 uppercase tracking-wide">
-                                        Share this code:
-                                    </div>
-                                </div>
+                                <div><div className="text-amber-400 text-sm font-bold flex items-center gap-2"><AlertTriangle size={14} /> Waiting for Partner</div><div className="text-zinc-500 text-[10px] mt-1 uppercase tracking-wide">Share this code:</div></div>
                                 <button onClick={onUnlink} className="text-zinc-600 hover:text-rose-500"><XCircle size={16}/></button>
                             </div>
-                            
                             <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex justify-between items-center cursor-pointer group" onClick={() => navigator.clipboard.writeText(generatedCode || sharedState?.link_code)}>
-                                <span className="text-2xl font-mono font-black text-white tracking-[0.2em]">
-                                    {generatedCode || sharedState?.link_code || '...'}
-                                </span>
+                                <span className="text-2xl font-mono font-black text-white tracking-[0.2em]">{generatedCode || sharedState?.link_code || '...'}</span>
                                 <Copy size={16} className="text-zinc-600 group-hover:text-white transition-colors"/>
                             </div>
                         </div>
                     )}
                 </div>
              ) : (
-                // --- NOT LINKED STATE ---
                 <div className="space-y-3">
                     {!linkMode ? (
                         <div className="flex gap-2">
-                            <button onClick={() => {setLinkMode('create'); handleGenerate();}} className="flex-1 py-3 bg-violet-600 rounded-xl text-white font-bold text-xs hover:bg-violet-500 transition-colors">
-                                I'm Lead (Get Code)
-                            </button>
-                            <button onClick={() => setLinkMode('join')} className="flex-1 py-3 bg-zinc-800 rounded-xl text-white font-bold text-xs hover:bg-zinc-700 transition-colors">
-                                Join Partner
-                            </button>
+                            <button onClick={() => {setLinkMode('create'); handleGenerate();}} className="flex-1 py-3 bg-violet-600 rounded-xl text-white font-bold text-xs hover:bg-violet-500 transition-colors">I'm Lead (Get Code)</button>
+                            <button onClick={() => setLinkMode('join')} className="flex-1 py-3 bg-zinc-800 rounded-xl text-white font-bold text-xs hover:bg-zinc-700 transition-colors">Join Partner</button>
                         </div>
                     ) : (
                         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 animate-in zoom-in-95">
-                            <div className="flex justify-between items-center mb-3">
-                                <span className="text-white font-bold text-xs uppercase tracking-wide">
-                                    {linkMode === 'create' ? "Generating..." : "Enter Code"}
-                                </span>
-                                <button onClick={() => {setLinkMode(null); setLinkError(null);}} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button>
-                            </div>
-
+                            <div className="flex justify-between items-center mb-3"><span className="text-white font-bold text-xs uppercase tracking-wide">{linkMode === 'create' ? "Generating..." : "Enter Code"}</span><button onClick={() => {setLinkMode(null); setLinkError(null);}} className="text-zinc-500 hover:text-white"><XCircle size={16}/></button></div>
                             {linkMode === 'join' && (
                                 <div className="flex gap-2">
-                                    <input 
-                                        value={joinCode} 
-                                        onChange={e => setJoinCode(e.target.value)} 
-                                        placeholder="CODE"
-                                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-center text-white font-mono uppercase text-sm outline-none focus:border-violet-500"
-                                    />
-                                    <button onClick={handleJoin} disabled={loading || !joinCode} className="px-4 bg-emerald-600 rounded-lg text-white font-bold text-xs">
-                                        {loading ? "..." : "Link"}
-                                    </button>
+                                    <input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="CODE" className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-center text-white font-mono uppercase text-sm outline-none focus:border-violet-500" />
+                                    <button onClick={handleJoin} disabled={loading || !joinCode} className="px-4 bg-emerald-600 rounded-lg text-white font-bold text-xs">{loading ? "..." : "Link"}</button>
                                 </div>
                             )}
                             {linkError && <p className="text-rose-500 text-[10px] mt-2 text-center font-bold">{linkError}</p>}
@@ -238,7 +180,6 @@ export default function Config({
         </div>
       </Card>
 
-      {/* --- LOVE LANGUAGES --- */}
       <Card title="My Love Preferences">
         <div className="grid grid-cols-3 gap-2">
           {LOVE_STYLES.map(item => {

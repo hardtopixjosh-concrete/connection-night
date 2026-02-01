@@ -23,7 +23,6 @@ export default function App() {
   const [customDeckCards, setCustomDeckCards] = useState([]);
   const [hiddenCards, setHiddenCards] = useState([]); 
 
-  // FIX: Force ID to string so the filter works for both Numbers (Default) and Strings (Custom)
   const activeDeck = [...FULL_DECK, ...customDeckCards].filter(c => !hiddenCards.includes(String(c.id)));
 
   // 1. INITIAL SESSION
@@ -56,7 +55,6 @@ export default function App() {
 
     const coupleId = profile.couple_id;
 
-    // Listen for Shared State
     const stateChannel = supabase.channel('couple_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${coupleId}` }, (payload) => {
           if (payload.new) setSharedState(payload.new);
@@ -69,17 +67,18 @@ export default function App() {
         })
         .subscribe();
     
-    // Listen for History
-    const historyChannel = supabase.channel('history_changes')
+    supabase.channel('history_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'history', filter: `couple_id=eq.${coupleId}` }, () => fetchHistory(coupleId))
         .subscribe();
 
-    // Listen for Deck Changes (Scoped to Couple)
     supabase.channel('deck_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_deck_cards', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomDeck(coupleId))
         .subscribe();
 
-    supabase.channel('items_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items' }, () => fetchCustomItems()).subscribe();
+    supabase.channel('items_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_store_items', filter: `couple_id=eq.${coupleId}` }, () => fetchCustomItems(coupleId))
+        .subscribe();
+
     supabase.channel('voucher_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vouchers' }, () => fetchVouchers()).subscribe();
     
     return () => supabase.removeAllChannels();
@@ -119,9 +118,9 @@ export default function App() {
 
     await Promise.all([
         myProfile.couple_id ? fetchHistory(myProfile.couple_id) : Promise.resolve(),
-        myProfile.couple_id ? fetchCustomDeck(myProfile.couple_id) : Promise.resolve(), // Pass ID explicitly
-        fetchVouchers(), 
-        fetchCustomItems()
+        myProfile.couple_id ? fetchCustomDeck(myProfile.couple_id) : Promise.resolve(),
+        myProfile.couple_id ? fetchCustomItems(myProfile.couple_id) : Promise.resolve(),
+        fetchVouchers()
     ]);
     setLoading(false);
   }
@@ -135,23 +134,19 @@ export default function App() {
   };
 
   const fetchVouchers = async () => { const { data } = await supabase.from('vouchers').select('*').eq('redeemed', false); setVouchers(data || []); };
-  const fetchCustomItems = async () => { const { data } = await supabase.from('custom_store_items').select('*'); setCustomStoreItems(data || []); };
   
-  // --- UPDATED: Fetch only OUR couple's cards ---
-  const fetchCustomDeck = async (targetCoupleId) => { 
-      // Fallback if ID not passed but profile exists
+  const fetchCustomItems = async (targetCoupleId) => { 
       const cId = targetCoupleId || profile?.couple_id;
       if (!cId) return;
-
-      const { data } = await supabase
-          .from('custom_deck_cards')
-          .select('*')
-          .eq('couple_id', cId); // Scope query
-      
-      const mappedCards = (data || []).map(c => ({
-          ...c,
-          desc: c.desc_text 
-      }));
+      const { data } = await supabase.from('custom_store_items').select('*').eq('couple_id', cId); 
+      setCustomStoreItems(data || []); 
+  };
+  
+  const fetchCustomDeck = async (targetCoupleId) => { 
+      const cId = targetCoupleId || profile?.couple_id;
+      if (!cId) return;
+      const { data } = await supabase.from('custom_deck_cards').select('*').eq('couple_id', cId);
+      const mappedCards = (data || []).map(c => ({ ...c, desc: c.desc_text }));
       setCustomDeckCards(mappedCards); 
   };
 
@@ -168,14 +163,10 @@ export default function App() {
     try {
         const cleanCode = code.trim().toUpperCase();
         const { data: couple, error } = await supabase.from('couples').select('id').eq('link_code', cleanCode).maybeSingle();
-
         if (error) throw new Error("Database Error: " + error.message);
         if (!couple) throw new Error("Invalid Code: No partner found.");
-
         const { error: updateError } = await supabase.from('profiles').update({ couple_id: couple.id, is_lead: false }).eq('id', session.user.id);
-
         if (updateError) throw new Error("Could not join: " + updateError.message);
-
         await fetchAllData(session.user.id); 
         setActiveTab('dashboard');
     } catch (e) {
@@ -220,8 +211,6 @@ export default function App() {
     await supabase.from('couples').update(updates).eq('id', profile.couple_id);
   };
 
-  // --- PLAY LOGIC ---
-
   const handleSyncInput = async (inputs) => {
     setActiveTab('dashboard');
     const col = profile.isUserLead ? 'sync_data_lead' : 'sync_data_partner';
@@ -247,7 +236,6 @@ export default function App() {
      setActiveTab('dashboard');
      setSharedState(prev => ({ ...prev, sync_stage: 'active', sync_pool: [finalCard] }));
      
-     // --- TOKEN REWARD LOGIC ---
      const getInt = (val) => {
          if (val === 'high' || val === 3) return 3;
          if (val === 'medium' || val === 2) return 2;
@@ -305,6 +293,15 @@ export default function App() {
     await supabase.from('profiles').update({ tokens: (profile.tokens || 0) - item.cost }).eq('id', session.user.id);
     await supabase.from('vouchers').insert([{ label: item.label, icon_name: 'Ticket' }]);
   };
+  
+  const handleContribute = async (amount) => {
+      const currentVault = sharedState.vault_current || 0;
+      const newTotal = currentVault + amount;
+      setProfile(prev => ({...prev, tokens: prev.tokens - amount}));
+      await supabase.from('profiles').update({ tokens: (profile.tokens || 0) - amount }).eq('id', session.user.id);
+      setSharedState(prev => ({...prev, vault_current: newTotal}));
+      await supabase.from('couples').update({ vault_current: newTotal }).eq('id', profile.couple_id);
+  };
 
   if (loading || (profile?.couple_id && !sharedState)) {
       return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
@@ -357,7 +354,28 @@ export default function App() {
                     onResetSync={handleResetSync} 
                   />
                 )}
-                {activeTab === 'store' && <Store tokens={profile?.tokens || 0} onPurchase={handlePurchase} vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} onContribute={() => {}} customItems={customStoreItems} onAddCustomItem={() => {}} onDeleteCustomItem={() => {}} />}
+                {activeTab === 'store' && (
+                  <Store 
+                      tokens={profile?.tokens || 0} 
+                      onPurchase={handlePurchase} 
+                      vault={{ current: sharedState?.vault_current || 0, goal: sharedState?.vault_goal || 50, name: sharedState?.vault_name || 'Goal' }} 
+                      onContribute={handleContribute} 
+                      customItems={customStoreItems} 
+                      onAddCustomItem={async (item) => {
+                        const { error } = await supabase.from('custom_store_items').insert([{ ...item, couple_id: profile.couple_id }]);
+                        if (error) alert(error.message);
+                        else fetchCustomItems(profile.couple_id);
+                      }}
+                      onDeleteCustomItem={async (id) => {
+                        await supabase.from('custom_store_items').delete().eq('id', id);
+                        fetchCustomItems(profile.couple_id);
+                      }}
+                      // --- NEW: Pass Update Vault Here ---
+                      onUpdateVault={async (name, goal) => {
+                        await supabase.from('couples').update({ vault_name: name, vault_goal: goal }).eq('id', profile.couple_id);
+                      }}
+                  />
+                )}
                 {activeTab === 'memories' && (
                   <Journal 
                     profile={profile} 
@@ -392,33 +410,29 @@ export default function App() {
                 onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
                 onLogout={handleLogout} 
                 activeDeck={activeDeck} 
-
-                // --- UPDATED: Save Card with Couple ID ---
                 onAddDeckCard={async (newCard) => {
                     const cardPayload = {
                         title: newCard.title,
                         intensity: newCard.intensity,
                         category: newCard.category,
                         desc_text: newCard.desc,
-                        couple_id: profile.couple_id // <--- CRITICAL TAG
+                        couple_id: profile.couple_id
                     };
                     const { error } = await supabase.from('custom_deck_cards').insert([cardPayload]);
                     if (error) alert(error.message);
                     else fetchCustomDeck(profile.couple_id); 
                 }} 
-
                 onDeleteDeckCard={async (card) => {
                     const isCustom = customDeckCards.some(c => c.id === card.id);
                     if (isCustom) {
                         await supabase.from('custom_deck_cards').delete().eq('id', card.id);
                         fetchCustomDeck(profile.couple_id);
                     } else {
-                        const newHidden = [...hiddenCards, card.id];
+                        const newHidden = [...hiddenCards, String(card.id)];
                         setHiddenCards(newHidden);
                         await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', session.user.id);
                     }
                 }}
-                
                 onCreateLink={handleCreateLink}
                 onJoinLink={handleJoinLink}
                 onUnlink={handleUnlink}

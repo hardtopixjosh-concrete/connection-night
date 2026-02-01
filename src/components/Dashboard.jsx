@@ -25,29 +25,20 @@ export default function Dashboard({
   const isLeadPicking = syncStage === 'lead_picking';
   const isPartnerPicking = syncStage === 'partner_picking';
 
-// --- DAILY DROP LOGIC (FIXED) ---
+  // --- DAILY DROP LOGIC ---
   const [dailyDrop, setDailyDrop] = useState({ label: 'Connection', quest: 'Loading daily quest...' });
 
   useEffect(() => {
-    // 1. Get Partner Preferences (or default to empty)
     const prefs = partnerProfile?.partner_focus_areas || [];
-    
-    // 2. Filter MICRO_CONNECTIONS to only include what partner likes
-    // We filter the master list so we have valid IDs and Labels
     let availableTypes = MICRO_CONNECTIONS.filter(m => prefs.includes(m.id));
-
-    // Fallback: If they haven't picked anything yet, use the whole list
     if (availableTypes.length === 0) availableTypes = MICRO_CONNECTIONS;
 
-    // 3. Generate Date Hash (So it stays the same all day)
     const todayStr = new Date().toDateString();
     let hash = 0;
     for (let i = 0; i < todayStr.length; i++) hash = todayStr.charCodeAt(i) + ((hash << 5) - hash);
     
-    // 4. Pick a Type
     const selectedType = availableTypes[Math.abs(hash) % availableTypes.length];
 
-    // 5. Get the Text
     if (selectedType && DAILY_QUESTS[selectedType.id]) {
         const rawQuest = DAILY_QUESTS[selectedType.id];
         let finalQuestText = "Spend quality time together.";
@@ -59,11 +50,10 @@ export default function Dashboard({
         }
         setDailyDrop({ label: selectedType.label, quest: finalQuestText });
     }
-  }, [partnerProfile]); // <--- Reruns exactly when partner data arrives
+  }, [partnerProfile]); 
 
   const focusLabel = dailyDrop.label;
   const quest = dailyDrop.quest;
-  // --------------------------------
 
   const SIGNAL_STYLES = {
     horny: { bg: "bg-orange-950/40", border: "border-orange-500/50", iconBg: "bg-orange-500", shadow: "shadow-[0_0_15px_rgba(249,115,22,0.4)]", text: "text-orange-200", strong: "text-orange-100" },
@@ -97,11 +87,25 @@ export default function Dashboard({
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-700">
+      
+      {/* --- CUSTOM CSS FOR LIVE FIRE EFFECT --- */}
+      <style>{`
+        @keyframes fire-pulse {
+          0% { box-shadow: 0 0 10px #f97316, 0 0 20px #dc2626, inset 0 0 5px #f59e0b; border-color: #f97316; }
+          25% { box-shadow: 0 0 15px #fb923c, 0 0 30px #ef4444, inset 0 0 10px #fbbf24; border-color: #fb923c; }
+          50% { box-shadow: 0 0 25px #ea580c, 0 0 40px #b91c1c, inset 0 0 5px #d97706; border-color: #ef4444; }
+          75% { box-shadow: 0 0 15px #f97316, 0 0 30px #ef4444, inset 0 0 10px #f59e0b; border-color: #fb923c; }
+          100% { box-shadow: 0 0 10px #f97316, 0 0 20px #dc2626, inset 0 0 5px #f59e0b; border-color: #f97316; }
+        }
+        .live-fire {
+          animation: fire-pulse 1.5s infinite alternate ease-in-out;
+        }
+      `}</style>
+
       <div className="flex items-center justify-between mb-4 pt-2">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Good Evening, {profile?.name || 'User'}.</h1>
           
-          {/* --- ADDED: PARTNER STATUS LINE (Minimal) --- */}
           <div className="flex items-center gap-2 mb-1">
              {profile?.couple_id ? (
                 <span className="text-zinc-500 text-xs font-medium flex items-center gap-1">
@@ -113,7 +117,6 @@ export default function Dashboard({
                 </span>
              )}
           </div>
-          {/* ------------------------------------------ */}
 
           <div className="mt-2 flex items-center gap-2">
             {!syncedConnection ? (
@@ -126,7 +129,6 @@ export default function Dashboard({
         <button onClick={onOliveBranchClick} className={`p-4 rounded-full border transition-all duration-300 ${flagClass}`}><Flag size={22} fill={iconFill} /></button>
       </div>
 
-      {/* --- ADDED: PROMPT TO LINK IF NOT LINKED --- */}
       {!profile?.couple_id && (
           <div onClick={() => onNavigate('setup')} className="bg-violet-900/20 border border-violet-500/30 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-violet-900/30 transition-all">
               <div className="h-10 w-10 bg-violet-600 rounded-full flex items-center justify-center shrink-0">
@@ -138,7 +140,6 @@ export default function Dashboard({
               </div>
           </div>
       )}
-      {/* ------------------------------------------ */}
 
       {isWaitingForPartnerInput && (
         <div className="animate-in slide-in-from-top-4 cursor-pointer active:scale-95 transition-transform" onClick={() => onNavigate('play')}>
@@ -193,14 +194,18 @@ export default function Dashboard({
 
       {syncedConnection && (
         <div className="animate-in slide-in-from-right-4 duration-500">
-          <Card className="border-emerald-500/40 bg-gradient-to-br from-zinc-900 to-emerald-950/20">
-             <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-2 bg-zinc-800 px-2 py-1 rounded text-[10px] font-bold text-emerald-400 uppercase tracking-widest"><Sparkles size={12} /> Synced Plan</div>
-                <div className="flex items-center gap-1 text-zinc-500 text-xs font-bold uppercase tracking-tighter"><Calendar size={12} /> Today</div>
+          {/* --- THE LIVE FIRE CARD --- */}
+          <div className="relative rounded-3xl overflow-hidden live-fire border-2 bg-zinc-900">
+             <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-red-950/40 z-0"></div>
+             <div className="relative z-10 p-5">
+                <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-2 bg-zinc-950/50 px-2 py-1 rounded text-[10px] font-bold text-orange-400 uppercase tracking-widest border border-orange-500/30"><Flame size={12} fill="currentColor" /> Synced Plan</div>
+                    <div className="flex items-center gap-1 text-orange-200/50 text-xs font-bold uppercase tracking-tighter"><Calendar size={12} /> Today</div>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1 tracking-tight drop-shadow-md">{syncedConnection.activity.title === 'BLIND_DATE' ? 'Mystery Date' : syncedConnection.activity.title}</h3>
+                <p className="text-zinc-300 text-sm mb-4 leading-relaxed">{syncedConnection.activity.title === 'BLIND_DATE' ? 'Details locked until tonight...' : syncedConnection.activity.desc}</p>
              </div>
-             <h3 className="text-2xl font-bold text-white mb-1 tracking-tight">{syncedConnection.activity.title === 'BLIND_DATE' ? 'Mystery Date' : syncedConnection.activity.title}</h3>
-             <p className="text-zinc-400 text-sm mb-4 leading-relaxed">{syncedConnection.activity.title === 'BLIND_DATE' ? 'Details locked until tonight...' : syncedConnection.activity.desc}</p>
-          </Card>
+          </div>
         </div>
       )}
 
@@ -244,7 +249,6 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* --- HOW TO PLAY SECTION --- */}
       <div className="flex justify-center mt-8 pb-4">
         <button
             onClick={() => setShowHelp(true)}
@@ -255,7 +259,6 @@ export default function Dashboard({
         </button>
       </div>
 
-      {/* --- HELP MODAL --- */}
       {showHelp && (
         <div className="fixed inset-0 z-[60] bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl shadow-2xl max-h-[85vh] overflow-y-auto relative ring-1 ring-white/10">
@@ -265,7 +268,6 @@ export default function Dashboard({
                 </div>
                 
                 <div className="p-6 space-y-8">
-                    {/* Section 1: Signals */}
                     <div className="flex gap-4">
                         <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-rose-500 h-fit"><Flag size={20} fill="currentColor" /></div>
                         <div>
@@ -274,7 +276,6 @@ export default function Dashboard({
                         </div>
                     </div>
 
-                    {/* Section 2: Connection Night */}
                     <div className="flex gap-4">
                         <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-violet-500 h-fit"><Sparkles size={20} fill="currentColor" /></div>
                         <div>
@@ -283,7 +284,6 @@ export default function Dashboard({
                         </div>
                     </div>
 
-                    {/* Section 3: Tokens */}
                     <div className="flex gap-4">
                         <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-amber-500 h-fit"><Coins size={20} fill="currentColor" /></div>
                         <div>
@@ -292,7 +292,6 @@ export default function Dashboard({
                         </div>
                     </div>
 
-                     {/* Section 4: Daily Drop */}
                      <div className="flex gap-4">
                         <div className="shrink-0 bg-zinc-800 p-3 rounded-xl text-emerald-500 h-fit"><Calendar size={20} /></div>
                         <div>
