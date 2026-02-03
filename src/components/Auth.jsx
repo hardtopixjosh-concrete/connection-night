@@ -32,6 +32,7 @@ export default function Auth({ onLoginSuccess }) {
         onLoginSuccess();
       } else {
         if (!name.trim()) throw new Error("Please enter your name.");
+        if (password.length < 6) throw new Error("Password must be at least 6 characters.");
         
         const response = await fetch('/api/signup', {
             method: 'POST',

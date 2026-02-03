@@ -146,6 +146,10 @@ export default function Config({
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 block">Alerts</label>
             <button 
                 onClick={() => {
+                    if (!('Notification' in window)) {
+                        alert("Notifications are not supported in this browser.");
+                        return;
+                    }
                     Notification.requestPermission().then(perm => {
                         if (perm === 'granted') alert("Notifications Enabled!");
                         else alert("Notifications blocked. Check browser settings.");

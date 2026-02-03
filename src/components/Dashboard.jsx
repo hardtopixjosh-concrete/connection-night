@@ -76,18 +76,6 @@ export default function Dashboard({
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-700">
-      
-      <style>{`
-        @keyframes fire-pulse {
-          0% { box-shadow: 0 0 10px #f97316, 0 0 20px #dc2626, inset 0 0 5px #f59e0b; border-color: #f97316; }
-          25% { box-shadow: 0 0 15px #fb923c, 0 0 30px #ef4444, inset 0 0 10px #fbbf24; border-color: #fb923c; }
-          50% { box-shadow: 0 0 25px #ea580c, 0 0 40px #b91c1c, inset 0 0 5px #d97706; border-color: #ef4444; }
-          75% { box-shadow: 0 0 15px #f97316, 0 0 30px #ef4444, inset 0 0 10px #f59e0b; border-color: #fb923c; }
-          100% { box-shadow: 0 0 10px #f97316, 0 0 20px #dc2626, inset 0 0 5px #f59e0b; border-color: #f97316; }
-        }
-        .live-fire { animation: fire-pulse 1.5s infinite alternate ease-in-out; }
-      `}</style>
-
       <div className="flex items-start justify-between mb-4 pt-2">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Good Evening, {profile?.name || 'User'}.</h1>

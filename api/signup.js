@@ -12,6 +12,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing fields' });
   }
 
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
   // Create a fake email so Supabase is happy
   // "Josh" -> "josh@connection-app.com"
   const fakeEmail = `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@connection-app.com`;

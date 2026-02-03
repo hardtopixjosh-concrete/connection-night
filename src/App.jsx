@@ -67,11 +67,11 @@ export default function App() {
           const oldData = sharedStateRef.current;
           if (newData && oldData) {
                if (oldData.sync_stage === 'idle' && newData.sync_stage === 'input') {
-                   if (Notification.permission === 'granted') new Notification("💕 Sync Started!", { body: "Partner is ready to connect." });
+                   if ('Notification' in window && Notification.permission === 'granted') new Notification("💕 Sync Started!", { body: "Partner is ready to connect." });
                }
                const partnerCol = profile.isUserLead ? 'signal_b' : 'signal_a';
                if (newData[partnerCol] !== oldData[partnerCol] && newData[partnerCol]) {
-                   if (Notification.permission === 'granted') new Notification("✨ New Vibe", { body: `Partner is feeling ${newData[partnerCol].toUpperCase()}` });
+                   if ('Notification' in window && Notification.permission === 'granted') new Notification("✨ New Vibe", { body: `Partner is feeling ${newData[partnerCol].toUpperCase()}` });
                }
           }
           if (payload.new) setSharedState(payload.new);
@@ -162,6 +162,11 @@ export default function App() {
   };
   
   const handleLogout = async () => { await supabase.auth.signOut(); setSession(null); };
+
+  const handleResetEconomy = async () => {
+    setProfile(prev => ({ ...prev, tokens: 0 }));
+    await supabase.from('profiles').update({ tokens: 0 }).eq('id', session.user.id);
+  };
 
   const handleSignal = async (signalId) => {
     if (!profile?.couple_id) return;
@@ -341,14 +346,15 @@ export default function App() {
           )}
 
           {activeTab === 'setup' && (
-            <Config 
-                profile={profile} 
-                partnerProfile={partnerProfile} 
-                sharedState={sharedState} 
-                onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }} 
-                onLogout={handleLogout} 
-                activeDeck={activeDeck} 
-                onAddDeckCard={async (newCard) => { const { error } = await supabase.from('custom_deck_cards').insert([{ ...newCard, desc_text: newCard.desc, couple_id: profile.couple_id }]); if(error) alert(error.message); else fetchCustomDeck(profile.couple_id); }} 
+            <Config
+                profile={profile}
+                partnerProfile={partnerProfile}
+                sharedState={sharedState}
+                onUpdateProfile={(u) => { supabase.from('profiles').update(u).eq('id', session.user.id); setProfile(prev => ({...prev, ...u})); }}
+                onLogout={handleLogout}
+                onResetEconomy={handleResetEconomy}
+                activeDeck={activeDeck}
+                onAddDeckCard={async (newCard) => { const { error } = await supabase.from('custom_deck_cards').insert([{ ...newCard, desc_text: newCard.desc, couple_id: profile.couple_id }]); if(error) alert(error.message); else fetchCustomDeck(profile.couple_id); }}
                 onDeleteDeckCard={async (card) => { if (customDeckCards.some(c => c.id === card.id)) { await supabase.from('custom_deck_cards').delete().eq('id', card.id); fetchCustomDeck(profile.couple_id); } else { const newHidden = [...hiddenCards, String(card.id)]; setHiddenCards(newHidden); await supabase.from('profiles').update({ hidden_card_ids: newHidden }).eq('id', session.user.id); } }}
                 onCreateLink={handleCreateLink}
                 onJoinLink={handleJoinLink}
