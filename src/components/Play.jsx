@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, Crown, Shield, Moon, Zap, Flame, RefreshCw, CheckCircle2, Layers } from 'lucide-react';
-import { Button } from './SharedUI'; 
+import { Sparkles, ArrowRight, Crown, Shield, Moon, Zap, Flame, RefreshCw, CheckCircle2, Layers, Star } from 'lucide-react';
+import { Button } from './SharedUI';
+import { haptic } from '../utils/haptics'; 
 
 const MiniBattery = ({ level, label }) => {
   const colors = { 1: 'bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.4)]', 2: 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]', 3: 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' };
@@ -16,7 +17,7 @@ const MiniBattery = ({ level, label }) => {
   );
 };
 
-export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSelection, onFinalSelection, onResetSync, theme }) {
+export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSelection, onFinalSelection, onResetSync, theme, favoriteCards = [] }) {
   const [localStage, setLocalStage] = useState('mode_selection'); 
   const [userBattery, setUserBattery] = useState(0); 
   const [shortlist, setShortlist] = useState([]);
@@ -39,12 +40,19 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   }, [sharedState?.sync_stage, myData]);
 
   const handleModeSelect = (mode) => {
-    setLocalStage('mood'); 
+    haptic.medium();
+    setLocalStage('mood');
   };
 
   const handleIntensitySelect = (level) => {
+    haptic.heavy();
     const finalBat = userBattery === 0 ? 1 : userBattery;
     onSyncInput({ battery: finalBat, intensity: level });
+  };
+
+  const handleBatterySelect = (level) => {
+    haptic.light();
+    setUserBattery(level);
   };
 
   // --- STAGE 0: ALREADY CONNECTED (CONGRATULATIONS SCREEN) ---
@@ -135,7 +143,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
             <div className="relative group mx-auto w-full max-w-[180px]">
                 <div className="h-20 border-4 border-zinc-800 rounded-2xl p-1 flex gap-1.5 relative bg-zinc-950/50">
                     {[1, 2, 3].map(seg => (
-                        <button key={seg} onClick={() => setUserBattery(seg)} className={`flex-1 rounded-lg transition-all duration-500 ${userBattery >= seg ? batteryColors[userBattery] : 'bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800'}`} />
+                        <button key={seg} onClick={() => handleBatterySelect(seg)} className={`flex-1 rounded-lg transition-all duration-500 ${userBattery >= seg ? batteryColors[userBattery] : 'bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800'}`} />
                     ))}
                 </div>
             </div>
@@ -172,7 +180,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     }
 
     const toggleShortlist = (id) => {
-      if (shortlist.includes(id)) { setShortlist(shortlist.filter(item => item !== id)); } 
+      haptic.light();
+      if (shortlist.includes(id)) { setShortlist(shortlist.filter(item => item !== id)); }
       else { if (shortlist.length < 3) setShortlist([...shortlist, id]); }
     };
 
@@ -188,11 +197,17 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
     const targetVal = Math.min(leadVal, partnerVal); 
     const targetIntensity = targetVal === 3 ? 'high' : targetVal === 2 ? 'medium' : 'low';
 
-    let options = deck.filter(c => 
-        (typeof c.intensity === 'string' && c.intensity.toLowerCase() === targetIntensity) || 
+    let options = deck.filter(c =>
+        (typeof c.intensity === 'string' && c.intensity.toLowerCase() === targetIntensity) ||
         (c.intensity === targetVal)
     );
-    if (options.length === 0) options = deck; 
+    if (options.length === 0) options = deck;
+    // Sort favorites to the top
+    options = [...options].sort((a, b) => {
+        const aFav = favoriteCards.includes(String(a.id)) ? 0 : 1;
+        const bFav = favoriteCards.includes(String(b.id)) ? 0 : 1;
+        return aFav - bFav;
+    }); 
 
     return (
       <div className="animate-in slide-in-from-right-4 pb-24 px-4 pt-2">
@@ -205,9 +220,16 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
         <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide pb-40">
             {options.map(card => {
               const isPicked = shortlist.includes(card.id);
+              const isFavorite = favoriteCards.includes(String(card.id));
               return (
                 <button key={card.id} onClick={() => toggleShortlist(card.id)} disabled={!isPicked && shortlist.length >= 3} className={`w-full p-5 rounded-3xl border text-left transition-all relative ${isPicked ? `${theme.bgSoft} ${theme.borderStrong}` : 'bg-zinc-900/40 border-zinc-800 opacity-60 grayscale'}`}>
-                    <div className="flex justify-between items-center mb-1"><h4 className={`font-bold ${isPicked ? 'text-white' : 'text-zinc-400'}`}>{card.title}</h4>{isPicked && <CheckCircle2 size={16} className={`${theme.text}`} />}</div>
+                    <div className="flex justify-between items-center mb-1">
+                        <h4 className={`font-bold flex items-center gap-2 ${isPicked ? 'text-white' : 'text-zinc-400'}`}>
+                            {isFavorite && <Star size={14} className="text-amber-500" fill="currentColor" />}
+                            {card.title}
+                        </h4>
+                        {isPicked && <CheckCircle2 size={16} className={`${theme.text}`} />}
+                    </div>
                     <p className="text-xs text-zinc-500 leading-relaxed">{card.desc}</p>
                 </button>
               );
@@ -256,7 +278,7 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
          </div>
          <div className="space-y-4">
             {pool.map(card => (
-               <button key={card.id} onClick={() => onFinalSelection(card)} className="w-full p-6 rounded-[2rem] bg-zinc-900 border border-zinc-800 hover:border-emerald-500 hover:bg-emerald-950/20 transition-all group text-left relative overflow-hidden active:scale-95">
+               <button key={card.id} onClick={() => { haptic.success(); onFinalSelection(card); }} className="w-full p-6 rounded-[2rem] bg-zinc-900 border border-zinc-800 hover:border-emerald-500 hover:bg-emerald-950/20 transition-all group text-left relative overflow-hidden active:scale-95">
                   <div className="relative z-10">
                      <div className="flex items-center gap-2 mb-3">
                         <span className={`h-2 w-2 rounded-full ${card.intensity === 'high' ? 'bg-rose-500' : card.intensity === 'medium' ? 'bg-orange-500' : 'bg-blue-500'}`} />

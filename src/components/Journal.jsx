@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Calendar, Trash2, X, Save, Edit2, Image as ImageIcon, Upload, Link as LinkIcon, Heart, Download, Maximize2, Loader2 } from 'lucide-react';
 import { Button } from './SharedUI';
-import { supabase } from '../supabase'; 
+import { supabase } from '../supabase';
+import { compressImage } from '../utils/imageCompression';
+import { haptic } from '../utils/haptics'; 
 
 export default function Journal({ profile, history, onAddMemory, onDeleteMemory, onUpdateMemory, theme }) {
   const [isAdding, setIsAdding] = useState(false);
@@ -29,10 +31,17 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
   };
 
   const uploadImageToSupabase = async (file) => {
-    const fileExt = file.name.split('.').pop();
+    // Compress image before upload
+    const compressedFile = await compressImage(file, {
+      maxWidth: 1200,
+      maxHeight: 1200,
+      quality: 0.8
+    });
+
+    const fileExt = compressedFile.type === 'image/jpeg' ? 'jpg' : file.name.split('.').pop();
     const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
     const filePath = `${fileName}`;
-    const { error: uploadError } = await supabase.storage.from('memories').upload(filePath, file);
+    const { error: uploadError } = await supabase.storage.from('memories').upload(filePath, compressedFile);
     if (uploadError) throw uploadError;
     const { data } = supabase.storage.from('memories').getPublicUrl(filePath);
     return data.publicUrl;
@@ -45,8 +54,9 @@ export default function Journal({ profile, history, onAddMemory, onDeleteMemory,
         let finalImageUrl = newImage;
         if (fileToUpload) finalImageUrl = await uploadImageToSupabase(fileToUpload);
         await onAddMemory({ title: newTitle, notes: newDesc, image_url: finalImageUrl, intensity: 'medium', rating: rating });
+        haptic.success();
         resetForm();
-    } catch (error) { alert("Error uploading: " + error.message); } finally { setIsUploading(false); }
+    } catch (error) { haptic.error(); alert("Error uploading: " + error.message); } finally { setIsUploading(false); }
   };
 
   const resetForm = () => {

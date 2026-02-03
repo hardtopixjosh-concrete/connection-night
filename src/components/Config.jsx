@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, Bell, Palette } from 'lucide-react';
+import { LogOut, Save, RotateCcw, CheckCircle2, Trash2, Moon, Zap, Flame, RefreshCw, Link as LinkIcon, AlertTriangle, Copy, XCircle, Bell, Palette, Star } from 'lucide-react';
+import { haptic } from '../utils/haptics';
 import { Card, Button } from './SharedUI';
 import { supabase } from '../supabase';
 import { THEMES } from '../data/themes'; // Import THEMES
@@ -19,23 +20,25 @@ const LOVE_STYLES = [
   { id: 'chores', label: 'Chores', icon: '🧹' }
 ];
 
-export default function Config({ 
-  profile, 
-  partnerProfile, 
-  sharedState, 
-  onUpdateProfile, 
-  onLogout, 
-  onResetEconomy, 
-  activeDeck, 
-  onAddDeckCard, 
-  onDeleteDeckCard, 
-  onUpdateVault, 
-  onCreateLink, 
-  onJoinLink, 
-  onUnlink, 
-  onRefresh, 
-  theme, // NOW RECEIVES FULL OBJECT
-  onUpdateTheme 
+export default function Config({
+  profile,
+  partnerProfile,
+  sharedState,
+  onUpdateProfile,
+  onLogout,
+  onResetEconomy,
+  activeDeck,
+  onAddDeckCard,
+  onDeleteDeckCard,
+  onUpdateVault,
+  onCreateLink,
+  onJoinLink,
+  onUnlink,
+  onRefresh,
+  theme,
+  onUpdateTheme,
+  favoriteCards = [],
+  onToggleFavorite
 }) {
   const [name, setName] = useState('');
   const [focusAreas, setFocusAreas] = useState([]);
@@ -255,12 +258,18 @@ export default function Config({
             </div>
         </div>
         <div className="space-y-2">
-            {displayedCards.map(card => (
-                <div key={card.id} className="flex justify-between items-start bg-zinc-900 p-3 rounded-xl border border-zinc-800">
-                    <div><h4 className="text-sm font-bold text-white">{card.title}</h4><p className="text-[10px] text-zinc-500">{card.desc}</p></div>
-                    <button onClick={() => onDeleteDeckCard(card)} className="text-zinc-600 hover:text-rose-500 p-2"><Trash2 size={16} /></button>
-                </div>
-            ))}
+            {displayedCards.map(card => {
+                const isFavorite = favoriteCards.includes(String(card.id));
+                return (
+                    <div key={card.id} className={`flex justify-between items-start bg-zinc-900 p-3 rounded-xl border ${isFavorite ? 'border-amber-500/50' : 'border-zinc-800'}`}>
+                        <div className="flex-1"><h4 className="text-sm font-bold text-white flex items-center gap-2">{card.title}{isFavorite && <Star size={12} className="text-amber-500" fill="currentColor" />}</h4><p className="text-[10px] text-zinc-500">{card.desc}</p></div>
+                        <div className="flex gap-1">
+                            <button onClick={() => { haptic.light(); onToggleFavorite(card.id); }} className={`p-2 ${isFavorite ? 'text-amber-500' : 'text-zinc-600 hover:text-amber-500'}`}><Star size={16} fill={isFavorite ? "currentColor" : "none"} /></button>
+                            <button onClick={() => onDeleteDeckCard(card)} className="text-zinc-600 hover:text-rose-500 p-2"><Trash2 size={16} /></button>
+                        </div>
+                    </div>
+                );
+            })}
         </div>
       </Card>
 

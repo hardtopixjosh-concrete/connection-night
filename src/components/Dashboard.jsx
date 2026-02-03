@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight, HelpCircle, X, Coins, Zap, User, AlertTriangle } from 'lucide-react';
 import { Card } from './SharedUI';
 import { DAILY_QUESTS, MICRO_CONNECTIONS } from '../data/gameData';
+import { haptic } from '../utils/haptics';
 
 export default function Dashboard({ 
   profile, 
@@ -21,6 +22,26 @@ export default function Dashboard({
   theme // NOW RECEIVES FULL OBJECT
 }) {
   const [showHelp, setShowHelp] = useState(false);
+  const [signalCooldown, setSignalCooldown] = useState(false);
+  const lastSignalTime = useRef(0);
+
+  const handleSignalWithRateLimit = (signalId) => {
+    const now = Date.now();
+    if (now - lastSignalTime.current < 1000) {
+      // Rate limited - less than 1 second since last signal
+      return;
+    }
+    lastSignalTime.current = now;
+    haptic.medium();
+    onSignal(signalId);
+    setSignalCooldown(true);
+    setTimeout(() => setSignalCooldown(false), 1000);
+  };
+
+  const handleOliveBranchWithHaptic = () => {
+    haptic.heavy();
+    onOliveBranchClick();
+  };
 
   const isWaitingForPartnerInput = syncStage === 'input';
   const isLeadPicking = syncStage === 'lead_picking';
@@ -95,7 +116,7 @@ export default function Dashboard({
           </div>
         </div>
         <div className="flex flex-col items-center gap-1">
-            <button onClick={onOliveBranchClick} className={`p-4 rounded-full border transition-all duration-300 ${flagClass}`}><Flag size={22} fill={iconFill} /></button>
+            <button onClick={handleOliveBranchWithHaptic} className={`p-4 rounded-full border transition-all duration-300 ${flagClass}`}><Flag size={22} fill={iconFill} /></button>
             <span className="text-[9px] font-black uppercase tracking-wider text-zinc-600">Reconnect</span>
         </div>
       </div>
@@ -139,7 +160,7 @@ export default function Dashboard({
 
       {isReceiver && visualState !== 'GREEN' && (
         <div className="animate-in slide-in-from-top-2 duration-500">
-          <button onClick={onOliveBranchClick} className="w-full bg-amber-500/10 border border-amber-500/50 rounded-xl p-4 flex items-center gap-4 text-left hover:bg-amber-500/20 transition-all">
+          <button onClick={handleOliveBranchWithHaptic} className="w-full bg-amber-500/10 border border-amber-500/50 rounded-xl p-4 flex items-center gap-4 text-left hover:bg-amber-500/20 transition-all">
             <div className="bg-amber-500 p-2 rounded-lg text-black animate-pulse"><Flag size={20} fill="currentColor" /></div>
             <div className="flex-1"><p className="text-xs font-bold text-amber-200 uppercase tracking-wider">Olive Branch Extended</p><p className="text-xs text-amber-500/80 mt-1">{profile.partnerName} wants to reconnect. Tap to Accept.</p></div>
           </button>
@@ -199,7 +220,7 @@ export default function Dashboard({
         </div>
         <div className="grid grid-cols-4 gap-2">
           {[{ id: 'horny', icon: Flame, label: 'Horny', color: 'bg-orange-600' }, { id: 'needy', icon: Moon, label: 'Needy', color: 'bg-indigo-500' }, { id: 'talkative', icon: MessageCircle, label: 'Talkative', color: 'bg-blue-500' }, { id: 'touch', icon: Heart, label: 'Touch', color: 'bg-rose-500' }].map(signal => (
-            <button key={signal.id} onClick={() => onSignal(signal.id)} className={`flex-1 flex flex-col items-center gap-3 p-2 rounded-xl transition-all duration-300 ${mySignal === signal.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'}`}>
+            <button key={signal.id} onClick={() => handleSignalWithRateLimit(signal.id)} disabled={signalCooldown} className={`flex-1 flex flex-col items-center gap-3 p-2 rounded-xl transition-all duration-300 ${mySignal === signal.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${signalCooldown ? 'opacity-70' : ''}`}>
               <div className={`p-4 rounded-full transition-all duration-500 ${mySignal === signal.id ? `${signal.color} text-white shadow-lg` : 'bg-zinc-900 text-zinc-500'}`}><signal.icon size={24} fill={mySignal === signal.id ? "currentColor" : "none"} /></div>
               <span className={`text-[10px] font-bold uppercase tracking-wider ${mySignal === signal.id ? 'text-white' : 'text-zinc-500'}`}>{signal.label}</span>
             </button>

@@ -29,7 +29,8 @@ export default function App() {
   const [vouchers, setVouchers] = useState([]);
   const [customStoreItems, setCustomStoreItems] = useState([]);
   const [customDeckCards, setCustomDeckCards] = useState([]);
-  const [hiddenCards, setHiddenCards] = useState([]); 
+  const [hiddenCards, setHiddenCards] = useState([]);
+  const [favoriteCards, setFavoriteCards] = useState([]); 
 
   const activeDeck = [...FULL_DECK, ...customDeckCards].filter(c => !hiddenCards.includes(String(c.id)));
 
@@ -115,6 +116,7 @@ export default function App() {
 
     setProfile({ ...myProfile, isUserLead: myProfile.is_lead, partnerName: pProfile ? pProfile.name : 'Partner' });
     if (myProfile.hidden_card_ids) setHiddenCards(myProfile.hidden_card_ids);
+    if (myProfile.favorite_card_ids) setFavoriteCards(myProfile.favorite_card_ids);
     setSharedState(coupleState);
     setPartnerProfile(pProfile);
 
@@ -263,6 +265,15 @@ export default function App() {
       await supabase.from('profiles').update({ theme: newColorId }).eq('id', session.user.id);
   };
 
+  const handleToggleFavorite = async (cardId) => {
+      const cardIdStr = String(cardId);
+      const newFavorites = favoriteCards.includes(cardIdStr)
+        ? favoriteCards.filter(id => id !== cardIdStr)
+        : [...favoriteCards, cardIdStr];
+      setFavoriteCards(newFavorites);
+      await supabase.from('profiles').update({ favorite_card_ids: newFavorites }).eq('id', session.user.id);
+  };
+
   if (loading || (profile?.couple_id && !sharedState)) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white"><Sparkles className="animate-spin" /></div>;
   if (!session) return <Auth onLoginSuccess={() => fetchAllData(supabase.auth.getUser().then(({data}) => data.user.id))} />;
 
@@ -303,15 +314,16 @@ export default function App() {
           {profile?.couple_id ? (
               <>
                 {activeTab === 'play' && (
-                  <Play 
-                    profile={profile} 
-                    deck={activeDeck} 
-                    sharedState={sharedState} 
-                    onSyncInput={handleSyncInput} 
-                    onLeadSelection={handleLeadSelection} 
-                    onFinalSelection={handleFinalSelection} 
-                    onResetSync={handleResetSync} 
-                    theme={theme} // PASS FULL THEME OBJECT
+                  <Play
+                    profile={profile}
+                    deck={activeDeck}
+                    sharedState={sharedState}
+                    onSyncInput={handleSyncInput}
+                    onLeadSelection={handleLeadSelection}
+                    onFinalSelection={handleFinalSelection}
+                    onResetSync={handleResetSync}
+                    theme={theme}
+                    favoriteCards={favoriteCards}
                   />
                 )}
                 {activeTab === 'store' && (
@@ -360,8 +372,10 @@ export default function App() {
                 onJoinLink={handleJoinLink}
                 onUnlink={handleUnlink}
                 onRefresh={() => fetchAllData(session.user.id)}
-                theme={theme} // PASS FULL THEME OBJECT
+                theme={theme}
                 onUpdateTheme={handleUpdateTheme}
+                favoriteCards={favoriteCards}
+                onToggleFavorite={handleToggleFavorite}
             />
           )}
         </div>
