@@ -7,8 +7,9 @@ import Play from './components/Play';
 import Store from './components/Store';
 import Journal from './components/Journal';
 import Config from './components/Config';
+import Lockbox from './components/Lockbox'; // Ensure imported
 import { FULL_DECK } from './data/gameData';
-import { THEMES } from './data/themes'; // Import the new theme map
+import { THEMES } from './data/themes';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -19,9 +20,9 @@ export default function App() {
   const [partnerProfile, setPartnerProfile] = useState(null);
   const [sharedState, setSharedState] = useState(null);
   
-  // --- LOAD THEME OBJECT ---
+  // Load Theme
   const [currentThemeId, setCurrentThemeId] = useState('violet');
-  const theme = THEMES[currentThemeId] || THEMES.violet; // Get the full class map
+  const theme = THEMES[currentThemeId] || THEMES.violet;
 
   const sharedStateRef = useRef(null);
   
@@ -100,7 +101,6 @@ export default function App() {
         return;
     }
 
-    // --- SET THEME ID ---
     if (myProfile.theme) setCurrentThemeId(myProfile.theme);
 
     let coupleState = null;
@@ -272,7 +272,7 @@ export default function App() {
     <div className="h-[100dvh] w-full bg-zinc-950 text-zinc-200 font-sans flex justify-center selection:bg-violet-500/30 overflow-hidden fixed inset-0">
       <div className="w-full max-w-md bg-zinc-950 h-full relative shadow-2xl flex flex-col overflow-hidden font-sans">
         
-        {/* DYNAMIC HEADER: Uses the 'gradientFrom' class from the theme object */}
+        {/* DYNAMIC HEADER: Uses 'gradientFrom' */}
         <div className={`h-1 w-full bg-gradient-to-r ${theme.gradientFrom} via-fuchsia-600 to-indigo-600 opacity-70 shrink-0 transition-colors duration-500`} />
         
         <div className="flex-1 overflow-y-auto p-5 scrollbar-hide overscroll-contain pb-24">
@@ -291,8 +291,17 @@ export default function App() {
                 sessionUserId={session.user.id} 
                 syncStage={sharedState?.sync_stage} 
                 onNavigate={setActiveTab} 
-                theme={theme} // PASS FULL THEME OBJECT
+                theme={theme} // PASS THEME OBJECT
             />
+          )}
+          
+          {/* --- LOCKBOX COMPONENT --- */}
+          {activeTab === 'lockbox' && (
+              <Lockbox 
+                  profile={profile} 
+                  theme={theme} // PASS THEME OBJECT
+                  onExit={() => setActiveTab('dashboard')} 
+              />
           )}
           
           {profile?.couple_id ? (
@@ -306,7 +315,7 @@ export default function App() {
                     onLeadSelection={handleLeadSelection} 
                     onFinalSelection={handleFinalSelection} 
                     onResetSync={handleResetSync} 
-                    theme={theme} // PASS FULL THEME OBJECT
+                    theme={theme}
                   />
                 )}
                 {activeTab === 'store' && (
@@ -319,7 +328,7 @@ export default function App() {
                       onAddCustomItem={async (item) => { const { error } = await supabase.from('custom_store_items').insert([{ ...item, couple_id: profile.couple_id }]); if(error) alert(error.message); else fetchCustomItems(profile.couple_id); }}
                       onDeleteCustomItem={async (id) => { await supabase.from('custom_store_items').delete().eq('id', id); fetchCustomItems(profile.couple_id); }}
                       onUpdateVault={async (name, goal) => { await supabase.from('couples').update({ vault_name: name, vault_goal: goal }).eq('id', profile.couple_id); }}
-                      theme={theme} // PASS FULL THEME OBJECT
+                      theme={theme}
                   />
                 )}
                 {activeTab === 'memories' && (
@@ -329,7 +338,7 @@ export default function App() {
                     onAddMemory={async (newMem) => { await supabase.from('history').insert([{ ...newMem, couple_id: profile.couple_id }]); fetchHistory(profile.couple_id); }} 
                     onDeleteMemory={async (id) => { await supabase.from('history').delete().eq('id', id); fetchHistory(profile.couple_id); }} 
                     onUpdateMemory={async (id, updates) => { await supabase.from('history').update(updates).eq('id', id); fetchHistory(profile.couple_id); }} 
-                    theme={theme} // PASS FULL THEME OBJECT
+                    theme={theme}
                   />
                 )}
               </>
@@ -354,27 +363,28 @@ export default function App() {
                 onJoinLink={handleJoinLink}
                 onUnlink={handleUnlink}
                 onRefresh={() => fetchAllData(session.user.id)}
-                theme={theme} // PASS FULL THEME OBJECT
+                theme={theme}
                 onUpdateTheme={handleUpdateTheme}
             />
           )}
         </div>
         
-        {/* NAVBAR */}
-        <div className="w-full bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800/50 pb-8 pt-2 px-6 shrink-0 z-50">
-          <div className="flex justify-between items-center relative">
-            <NavItem id="dashboard" label="Home" icon={Heart} />
-            <NavItem id="store" label="Store" icon={ShoppingBag} />
-            <div className="relative -top-8">
-                {/* DYNAMIC PLAY BUTTON: Uses 'gradientFrom' */}
-                <button onClick={() => setActiveTab('play')} className={`h-16 w-16 rounded-full bg-gradient-to-tr ${theme.gradientFrom} to-indigo-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] border-[6px] border-zinc-950 active:scale-90 transition-all`}>
-                    <Sparkles size={28} fill="currentColor" />
-                </button>
+        {/* NAVBAR - HIDDEN WHEN IN LOCKBOX */}
+        {activeTab !== 'lockbox' && (
+          <div className="w-full bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800/50 pb-8 pt-2 px-6 shrink-0 z-50">
+            <div className="flex justify-between items-center relative">
+              <NavItem id="dashboard" label="Home" icon={Heart} />
+              <NavItem id="store" label="Store" icon={ShoppingBag} />
+              <div className="relative -top-8">
+                  <button onClick={() => setActiveTab('play')} className={`h-16 w-16 rounded-full bg-gradient-to-tr ${theme.gradientFrom} to-indigo-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] border-[6px] border-zinc-950 active:scale-90 transition-all`}>
+                      <Sparkles size={28} fill="currentColor" />
+                  </button>
+              </div>
+              <NavItem id="memories" label="History" icon={BookOpen} />
+              <NavItem id="setup" label="Config" icon={Settings} />
             </div>
-            <NavItem id="memories" label="History" icon={BookOpen} />
-            <NavItem id="setup" label="Config" icon={Settings} />
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

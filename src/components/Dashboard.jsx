@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight, HelpCircle, X, Coins, Zap, User, AlertTriangle } from 'lucide-react';
+import { Flag, Sparkles, Calendar, Moon, Flame, MessageCircle, Heart, Loader2, Crown, ArrowRight, HelpCircle, X, Coins, Zap, User, AlertTriangle, Lock } from 'lucide-react';
 import { Card } from './SharedUI';
 import { DAILY_QUESTS, MICRO_CONNECTIONS } from '../data/gameData';
 
@@ -106,6 +106,8 @@ export default function Dashboard({
             )}
           </div>
         </div>
+        
+        {/* RECONNECT BUTTON */}
         <div className="flex flex-col items-center gap-1">
             <button onClick={onOliveBranchClick} className={`p-4 rounded-full border transition-all duration-300 ${flagClass}`}><Flag size={22} fill={iconFill} /></button>
             <span className="text-[9px] font-black uppercase tracking-wider text-zinc-600">Reconnect</span>
@@ -219,9 +221,15 @@ export default function Dashboard({
         </div>
       </div>
 
+      {/* --- FOOTER BUTTONS --- */}
       <div className="flex flex-col items-center mt-8 pb-4 gap-4">
         <button onClick={() => setShowHelp(true)} className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-white transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border border-zinc-800 hover:border-zinc-500/30">
             <HelpCircle size={16} /> <span>How to Play</span>
+        </button>
+
+        {/* NEW LOCKBOX BUTTON LOCATION */}
+        <button onClick={() => onNavigate('lockbox')} className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-white transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border border-zinc-800 hover:border-zinc-500/30">
+            <Lock size={16} /> <span>The Lockbox</span>
         </button>
 
         {(!profile?.partner_focus_areas || profile.partner_focus_areas.length === 0) && (
