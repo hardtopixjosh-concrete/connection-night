@@ -18,21 +18,18 @@ const MiniBattery = ({ level, label }) => {
 
 const INTENSITY_INFO = {
     low: { 
-        label: "Restorative", 
         desc: "(Chill, Safe, Non-Sexual). The goal is emotional safety and comfort.",
         iconColor: "text-blue-400",
         iconBg: "bg-blue-500/10",
         textColor: "text-blue-400/60"
     },
     medium: { 
-        label: "Magnetic", 
         desc: "(Play, Tension, \"The Bridge\"). The goal is to build a charge. Possibility of sex without the demand.",
         iconColor: "text-amber-400",
         iconBg: "bg-amber-500/10",
         textColor: "text-amber-400/60"
     },
     high: { 
-        label: "Kinetic", 
         desc: "(Erotic, Adventure, Release).",
         iconColor: "text-rose-400",
         iconBg: "bg-rose-500/10",
@@ -42,19 +39,14 @@ const INTENSITY_INFO = {
 
 export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSelection, onFinalSelection, onResetSync, theme }) {
   const [localStage, setLocalStage] = useState('mode_selection'); 
-  const [userBattery, setUserBattery] = useState(0); 
   const [shortlist, setShortlist] = useState([]);
   
-  // New State for Validation Shake
-  const [batteryShake, setBatteryShake] = useState(false);
-
   const isLead = profile.isUserLead;
   const myData = isLead ? sharedState?.sync_data_lead : sharedState?.sync_data_partner;
 
   useEffect(() => {
     if (sharedState?.sync_stage === 'idle') {
         setLocalStage('mode_selection');
-        setUserBattery(0);
         setShortlist([]);
     }
   }, [sharedState?.sync_stage]);
@@ -70,13 +62,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   };
 
   const handleIntensitySelect = (level) => {
-    // VALIDATION: Must select battery first
-    if (userBattery === 0) {
-        setBatteryShake(true);
-        setTimeout(() => setBatteryShake(false), 500);
-        return;
-    }
-    onSyncInput({ battery: userBattery, intensity: level });
+    // Battery defaults to 3 since selection was removed
+    onSyncInput({ battery: 3, intensity: level });
   };
 
   // --- STAGE 0: ALREADY CONNECTED (CONGRATULATIONS SCREEN) ---
@@ -146,41 +133,18 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
   const showMoodInput = (sharedState?.sync_stage === 'idle' && localStage === 'mood') || (sharedState?.sync_stage === 'input' && !myData);
 
   if (showMoodInput) {
-    const batteryColors = { 1: 'bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.4)]', 2: 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]', 3: 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' };
-
     return (
       <div className="animate-in slide-in-from-bottom-4 duration-500 h-full flex flex-col">
-        {/* Style for the Shake Animation */}
-        <style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } } .animate-shake { animation: shake 0.3s ease-in-out; }`}</style>
-
         <div className="text-center space-y-2 mb-4 pt-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">
             {profile.isUserLead ? <Crown size={12} className="text-amber-400" /> : <Shield size={12} className="text-blue-400" />}
             {profile.isUserLead ? "You are In Charge" : "Partner is In Charge"}
           </div>
-          <h2 className="text-2xl font-light text-white tracking-tight">Set Your State</h2>
+          <h2 className="text-2xl font-light text-white tracking-tight">Select Intensity</h2>
         </div>
         
         <div className="px-4 flex-1 flex flex-col space-y-8 justify-center pb-20">
           
-          {/* BATTERY SECTION */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-2">
-                <h4 className={`text-[10px] font-black uppercase tracking-[0.2em] ${batteryShake ? 'text-rose-500 animate-pulse' : 'text-zinc-500'}`}>
-                    {batteryShake ? "Required: Select Capacity" : "Current Capacity"}
-                </h4>
-                <span className={`text-[10px] font-black uppercase tracking-widest ${userBattery === 0 ? 'text-zinc-600' : theme.textLight}`}>{userBattery === 0 ? "Select Level" : ["Low", "Medium", "High"][userBattery-1]}</span>
-            </div>
-            
-            <div className={`relative group mx-auto w-full max-w-[180px] ${batteryShake ? 'animate-shake' : ''}`}>
-                <div className={`h-20 border-4 rounded-2xl p-1 flex gap-1.5 relative bg-zinc-950/50 transition-colors duration-300 ${batteryShake ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.2)]' : 'border-zinc-800'}`}>
-                    {[1, 2, 3].map(seg => (
-                        <button key={seg} onClick={() => setUserBattery(seg)} className={`flex-1 rounded-lg transition-all duration-500 ${userBattery >= seg ? batteryColors[userBattery] : 'bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800'}`} />
-                    ))}
-                </div>
-            </div>
-          </div>
-
           {/* INTENSITY SECTION */}
           <div className="grid grid-cols-1 gap-3">
             {['low', 'medium', 'high'].map(id => {
@@ -198,12 +162,8 @@ export default function Play({ profile, deck, sharedState, onSyncInput, onLeadSe
                             <div className="flex-1">
                                 <h3 className="font-bold text-zinc-300 group-hover:text-white capitalize text-base flex items-center gap-2">
                                     {id} Intensity
-                                    {/* MATCHED COLOR LABEL - BIGGER */}
-                                    <span className={`text-xs font-bold uppercase tracking-wide ${info.iconColor} opacity-90`}>
-                                        — {info.label}
-                                    </span>
                                 </h3>
-                                {/* MATCHED COLOR DESC - BIGGER (Text-XS instead of 10px) */}
+                                {/* MATCHED COLOR DESC */}
                                 <p className={`text-xs mt-1 leading-snug ${info.textColor}`}>
                                     {info.desc}
                                 </p>

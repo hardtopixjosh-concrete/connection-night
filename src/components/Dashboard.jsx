@@ -227,8 +227,11 @@ export default function Dashboard({
             <HelpCircle size={16} /> <span>How to Play</span>
         </button>
 
-        {/* NEW LOCKBOX BUTTON LOCATION */}
-        <button onClick={() => onNavigate('lockbox')} className="flex items-center gap-2 text-xs font-bold text-zinc-600 hover:text-white transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border border-zinc-800 hover:border-zinc-500/30">
+        {/* --- DYNAMIC LOCKBOX BUTTON --- */}
+        <button 
+            onClick={() => onNavigate('lockbox')} 
+            className={`flex items-center gap-2 text-xs font-bold transition-colors uppercase tracking-widest bg-zinc-900/50 px-5 py-3 rounded-full border ${theme.border} ${theme.text} hover:text-white hover:border-white/50 shadow-[0_0_15px_rgba(0,0,0,0.3)]`}
+        >
             <Lock size={16} /> <span>The Lockbox</span>
         </button>
 
