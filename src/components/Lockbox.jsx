@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Unlock, Eye, EyeOff, Plus, Flame, HelpCircle, XCircle, Shield, Key, ArrowRight, Trash2, StopCircle, RefreshCw, Settings, Check, RotateCcw } from 'lucide-react';
+// FIX: Added 'X' to the imports below
+import { Lock, Unlock, Eye, EyeOff, Plus, Flame, HelpCircle, XCircle, Shield, Key, ArrowRight, Trash2, StopCircle, RefreshCw, Settings, Check, RotateCcw, X } from 'lucide-react';
 import { supabase } from '../supabase';
 import { Button } from './SharedUI';
 
@@ -10,8 +11,8 @@ export default function Lockbox({ profile, theme, onExit }) {
   const [shake, setShake] = useState(false);
   
   // PIN Management State
-  const [setupMode, setSetupMode] = useState(false); // True = Setting a NEW PIN
-  const [isChangingPin, setIsChangingPin] = useState(false); // True = In the "Change" flow
+  const [setupMode, setSetupMode] = useState(false); 
+  const [isChangingPin, setIsChangingPin] = useState(false);
   
   // App Logic
   const [activeTab, setActiveTab] = useState('shared'); 
@@ -30,7 +31,6 @@ export default function Lockbox({ profile, theme, onExit }) {
 
   // --- 0. INITIAL CHECK ---
   useEffect(() => {
-      // If user has NO PIN in database, force Setup Mode immediately
       if (!profile.lockbox_pin) {
           setSetupMode(true);
       }
@@ -42,33 +42,27 @@ export default function Lockbox({ profile, theme, onExit }) {
       const newPin = pin + num;
       setPin(newPin);
       
-      // AUTO-SUBMIT ON 4th DIGIT
       if (newPin.length === 4) {
-        
-        // A. SETTING A NEW PIN (First time OR Step 2 of Change)
+        // A. SETTING A NEW PIN
         if (setupMode) {
             await supabase.from('profiles').update({ lockbox_pin: newPin }).eq('id', profile.id);
-            // Reset all flags and unlock
             setSetupMode(false);
             setIsChangingPin(false);
             setIsUnlocked(true);
             setPin(''); 
             fetchItems();
         } 
-        
-        // B. VERIFYING OLD PIN (Step 1 of Change)
+        // B. VERIFYING OLD PIN
         else if (isChangingPin) {
              if (newPin === profile.lockbox_pin) {
-                 // Correct! Now let them set the new one.
                  setTimeout(() => {
                      setPin('');
-                     setSetupMode(true); // Enable "Set New" mode
+                     setSetupMode(true);
                  }, 300);
              } else {
                  triggerShake();
              }
         }
-        
         // C. NORMAL UNLOCK
         else {
             if (newPin === profile.lockbox_pin) {
@@ -88,22 +82,20 @@ export default function Lockbox({ profile, theme, onExit }) {
   };
 
   const handleChangePin = () => {
-      // Start the Secure Change Flow
-      setIsUnlocked(false);   // Lock the screen
-      setIsChangingPin(true); // Flag we are changing
-      setPin('');             // Clear input
-      setSetupMode(false);    // Ensure we verify first
+      setIsUnlocked(false);
+      setIsChangingPin(true);
+      setPin('');
+      setSetupMode(false);
   };
 
   const handleCancelChange = () => {
-      // If they cancel during change, just exit the lockbox or reset
       onExit();
   };
 
   // --- 2. DATA & REALTIME ---
   const fetchItems = async () => {
     if (!profile.couple_id) return;
-    setLoading(true);
+    // Don't set loading to true here to avoid flickering on realtime updates
     const { data } = await supabase
       .from('lockbox_items')
       .select('*')
@@ -115,6 +107,8 @@ export default function Lockbox({ profile, theme, onExit }) {
 
   useEffect(() => {
     if (!profile.couple_id) return;
+    fetchItems(); 
+
     const channel = supabase.channel('lockbox_realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'lockbox_items', filter: `couple_id=eq.${profile.couple_id}` }, () => {
             fetchItems();
@@ -154,7 +148,7 @@ export default function Lockbox({ profile, theme, onExit }) {
 
   const handleDelete = async (id) => {
     if (window.confirm("Delete this entry forever?")) {
-      setItems(currentItems => currentItems.filter(item => item.id !== id));
+      setItems(prev => prev.filter(item => item.id !== id));
       await supabase.from('lockbox_items').delete().eq('id', id);
     }
   };
@@ -181,7 +175,6 @@ export default function Lockbox({ profile, theme, onExit }) {
     }
   };
 
-  // --- DYNAMIC TITLE HELPER ---
   const getPinTitle = () => {
       if (setupMode) return "Set New Passcode";
       if (isChangingPin) return "Verify Current Passcode";
@@ -198,7 +191,7 @@ export default function Lockbox({ profile, theme, onExit }) {
             </div>
             <h2 className="text-white text-xl font-bold tracking-widest uppercase">{getPinTitle()}</h2>
             <p className="text-zinc-500 text-xs mt-2">
-                {setupMode ? "Enter a new 4-digit PIN" : "Enter PIN to continue"}
+                {setupMode ? "Enter a new 4-digit PIN" : "Enter PIN to decrypt"}
             </p>
         </div>
         <div className="flex gap-4 mb-12">
@@ -211,7 +204,6 @@ export default function Lockbox({ profile, theme, onExit }) {
             <div />
             <button onClick={() => handleNumPress('0')} className="h-20 w-20 rounded-full bg-zinc-900 border border-zinc-800 text-white text-2xl font-bold flex items-center justify-center hover:bg-zinc-800 active:scale-95 transition-all">0</button>
             
-            {/* Context Aware Cancel Button */}
             {isChangingPin ? (
                 <button onClick={handleCancelChange} className="h-20 w-20 rounded-full flex items-center justify-center text-zinc-500 hover:text-white"><RotateCcw /></button>
             ) : (
@@ -241,7 +233,6 @@ export default function Lockbox({ profile, theme, onExit }) {
             </div>
             
             <div className="flex gap-2">
-                {/* SETTINGS BUTTON FOR CHANGING PIN */}
                 <button onClick={handleChangePin} className="p-2 bg-zinc-900 rounded-full text-zinc-500 hover:text-white transition-colors"><Settings size={20} /></button>
                 <button onClick={onExit} className="p-2 bg-zinc-900 rounded-full text-zinc-500 hover:text-white"><XCircle size={20} /></button>
             </div>
@@ -264,7 +255,7 @@ export default function Lockbox({ profile, theme, onExit }) {
       )}
 
       {/* CONTENT LIST */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide pb-24">
         {loading ? <div className={`text-center py-10 ${theme.text} text-xs uppercase animate-pulse`}>Decrypting...</div> : (
             <>
                 {displayedItems.length === 0 && (
@@ -343,10 +334,11 @@ export default function Lockbox({ profile, theme, onExit }) {
                     );
                 })}
 
+                {/* --- HOW TO PLAY (IN-STREAM) --- */}
                 <div className="mt-8 mb-4">
-                    <button onClick={() => setShowHelp(true)} className="w-full py-4 rounded-2xl border border-dashed border-zinc-800 flex flex-col items-center gap-2 hover:bg-zinc-900/50 transition-colors group">
-                        <HelpCircle size={20} className="text-zinc-600 group-hover:text-zinc-400" />
-                        <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest group-hover:text-zinc-400">How to use The Lockbox</span>
+                    <button onClick={() => setShowHelp(true)} className="w-full py-4 rounded-2xl border-2 border-dashed border-zinc-800 flex flex-col items-center gap-2 hover:bg-zinc-900/50 transition-colors group">
+                        <HelpCircle size={24} className="text-zinc-600 group-hover:text-zinc-400" />
+                        <span className="text-xs font-bold text-zinc-600 uppercase tracking-widest group-hover:text-zinc-400">How to use The Lockbox</span>
                     </button>
                 </div>
             </>
@@ -376,8 +368,9 @@ export default function Lockbox({ profile, theme, onExit }) {
           </div>
       )}
 
+      {/* HELP MODAL (FIXED POSITIONING) */}
       {showHelp && (
-        <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in">
+        <div className="absolute inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in">
             <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden relative">
                 <div className="p-5 border-b border-zinc-800 flex justify-between items-center bg-zinc-900">
                     <h2 className="text-white font-bold uppercase tracking-widest text-sm flex items-center gap-2"><Shield size={16} className={theme.text} /> Lockbox Guide</h2>
